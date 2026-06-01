@@ -55,6 +55,7 @@ model Organization {
   repostRules             RepostRule[]
   unmatchedComments       UnmatchedComment[]
   ignoredMedias           IgnoredMedia[]
+  dmConversations         DmConversation[]
 
   @@index([apiKey])
   @@index([streakSince])
@@ -375,6 +376,7 @@ model Integration {
   flowMediaAliases      FlowMediaAlias[]
   unmatchedComments     UnmatchedComment[]
   ignoredMedias         IgnoredMedia[]
+  dmConversations       DmConversation[]
 
   @@unique([organizationId, internalId])
   @@index([rootInternalId])
@@ -1131,6 +1133,7 @@ model Profile {
   knowledgeDocuments ProfileKnowledgeDocument[]
   flows          Flow[]
   repostRules    RepostRule[]
+  dmConversations DmConversation[]
 
   @@unique([organizationId, slug, deletedAt])
   @@index([organizationId])
@@ -1582,4 +1585,53 @@ model RepostLog {
 
   @@unique([ruleId, sourceItemId])
   @@index([ruleId, status])
+}
+
+enum DmConversationStatus {
+  BOT_ACTIVE
+  HUMAN_HANDOFF
+  CLOSED
+}
+
+model DmConversation {
+  id               String               @id @default(uuid())
+  organizationId   String
+  profileId        String?
+  integrationId    String
+  igAccountId      String
+  igSenderId       String
+  igSenderName     String?
+  status           DmConversationStatus @default(BOT_ACTIVE)
+  source           String               @default("direct_message")
+  lastInboundAt    DateTime?
+  lastBotReplyAt   DateTime?
+  escalatedAt      DateTime?
+  escalationReason String?
+  botReplyCount    Int                  @default(0)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  profile      Profile?     @relation(fields: [profileId], references: [id])
+  integration  Integration  @relation(fields: [integrationId], references: [id])
+  messages     DmMessage[]
+
+  @@unique([integrationId, igSenderId])
+  @@index([organizationId])
+  @@index([profileId])
+  @@index([status])
+  @@index([igAccountId])
+}
+
+model DmMessage {
+  id             String   @id @default(uuid())
+  conversationId String
+  role           String
+  text           String
+  metaMid        String?  @unique
+  createdAt      DateTime @default(now())
+
+  conversation DmConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
 }
