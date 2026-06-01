@@ -65,6 +65,7 @@ import { InstagramMessagingService } from '@gitroom/nestjs-libraries/integration
 import { RepostRepository } from '@gitroom/nestjs-libraries/database/prisma/repost/repost.repository';
 import { RepostService } from '@gitroom/nestjs-libraries/database/prisma/repost/repost.service';
 import { DmRepository } from '@gitroom/nestjs-libraries/database/prisma/dm/dm.repository';
+import { DmFlowService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-flow.service';
 import { DmBotService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-bot.service';
 import { DmRateLimitService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-rate-limit.service';
 import { AiModule } from '@gitroom/nestjs-libraries/ai/ai.module';
@@ -138,6 +139,7 @@ import { AiModule } from '@gitroom/nestjs-libraries/ai/ai.module';
     RepostRepository,
     RepostService,
     DmRepository,
+    DmFlowService,
     DmBotService,
     DmRateLimitService,
   ],
