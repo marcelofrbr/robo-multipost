@@ -66,6 +66,7 @@ import { RepostRepository } from '@gitroom/nestjs-libraries/database/prisma/repo
 import { RepostService } from '@gitroom/nestjs-libraries/database/prisma/repost/repost.service';
 import { DmRepository } from '@gitroom/nestjs-libraries/database/prisma/dm/dm.repository';
 import { DmBotService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-bot.service';
+import { DmRateLimitService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-rate-limit.service';
 import { AiModule } from '@gitroom/nestjs-libraries/ai/ai.module';
 
 @Global()
@@ -138,6 +139,7 @@ import { AiModule } from '@gitroom/nestjs-libraries/ai/ai.module';
     RepostService,
     DmRepository,
     DmBotService,
+    DmRateLimitService,
   ],
   get exports() {
     return this.providers;
