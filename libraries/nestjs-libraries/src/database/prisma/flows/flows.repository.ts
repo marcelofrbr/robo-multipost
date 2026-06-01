@@ -70,6 +70,9 @@ export class FlowsRepository {
       include: {
         nodes: true,
         edges: true,
+        // internalId = IG business account ID (igAccountId), usado pelo
+        // workflow para semear a conversa de DM no handoff comment -> bot.
+        integration: { select: { internalId: true } },
       },
     });
   }
