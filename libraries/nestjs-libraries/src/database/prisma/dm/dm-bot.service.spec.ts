@@ -135,5 +135,28 @@ describe('DmBotService', () => {
         reason: 'baixa confianca (falha na geracao)',
       });
     });
+
+    it('deve escalar fail-safe sem reply quando factory.text lanca (IA nao configurada)', async () => {
+      // ARRANGE: resolver da IA lanca (ex.: 412 quando nao ha credencial)
+      knowledge.query.mockResolvedValue([]);
+      factory.text.mockRejectedValue(new Error('412'));
+
+      // ACT
+      const result = await service.generateReply({
+        orgId: 'org-1',
+        profileId: 'p-1',
+        integrationId: 'int-1',
+        history: [],
+        userMessage: 'tem desconto?',
+      });
+
+      // ASSERT
+      expect(mockedGenerateObject).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        reply: '',
+        escalate: true,
+        reason: 'baixa confianca (falha na geracao)',
+      });
+    });
   });
 });

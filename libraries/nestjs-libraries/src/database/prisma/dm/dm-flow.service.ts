@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TemporalService } from 'nestjs-temporal-core';
+import { DmConversationStatus } from '@prisma/client';
 import { FlowsRepository } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.repository';
 import { DmRepository } from '@gitroom/nestjs-libraries/database/prisma/dm/dm.repository';
 
@@ -67,11 +68,21 @@ export class DmFlowService {
     );
 
     // 4) Se um humano assumiu (HUMAN_HANDOFF), nao enfileira o bot.
-    if (conversation.status === 'HUMAN_HANDOFF') {
+    //    SOMENTE HUMAN_HANDOFF bloqueia: registra o inbound e nao enfileira.
+    if (conversation.status === DmConversationStatus.HUMAN_HANDOFF) {
       this._logger.log(
         `DM em HUMAN_HANDOFF (conversa ${conversation.id}) inbound registrado, bot nao enfileirado`
       );
       return;
+    }
+
+    // 4.1) Se a conversa estava CLOSED e a pessoa voltou a falar, REATIVAR
+    //      para BOT_ACTIVE e seguir o fluxo normal (enfileira).
+    if (conversation.status === DmConversationStatus.CLOSED) {
+      await this._dmRepository.reactivate(conversation.id);
+      this._logger.log(
+        `DM reativada (conversa ${conversation.id} estava CLOSED), bot enfileirado`
+      );
     }
 
     // 5) Enfileira o bot via Temporal.
@@ -84,11 +95,15 @@ export class DmFlowService {
     }
 
     const workflowId =
-      'dmbot-' + conversation.id + '-' + payload.igMessageId.slice(-8);
+      'dmbot-' + conversation.id + '-' + payload.igMessageId;
 
     await temporalClient.workflow.start('dmBotReplyWorkflow', {
       taskQueue: 'main',
       workflowId,
+      memo: {
+        conversationId: conversation.id,
+        integrationId: payload.integrationId,
+      },
       args: [
         {
           conversationId: conversation.id,

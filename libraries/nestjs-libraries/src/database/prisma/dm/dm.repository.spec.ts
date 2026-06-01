@@ -240,4 +240,17 @@ describe('DmRepository', () => {
       });
     });
   });
+
+  describe('reactivate', () => {
+    it('deve reativar a conversa setando status BOT_ACTIVE', async () => {
+      prisma.model.dmConversation.update.mockResolvedValue({} as any);
+
+      await repo.reactivate('c1');
+
+      expect(prisma.model.dmConversation.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: { status: 'BOT_ACTIVE' },
+      });
+    });
+  });
 });

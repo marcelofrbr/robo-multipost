@@ -51,7 +51,7 @@ export class DmRepository {
 
   appendMessage(
     conversationId: string,
-    role: string,
+    role: 'user' | 'assistant',
     text: string,
     metaMid?: string
   ) {
@@ -115,6 +115,13 @@ export class DmRepository {
     return this._dmConversation.model.dmConversation.update({
       where: { id },
       data: { status: DmConversationStatus.CLOSED },
+    });
+  }
+
+  reactivate(id: string) {
+    return this._dmConversation.model.dmConversation.update({
+      where: { id },
+      data: { status: DmConversationStatus.BOT_ACTIVE },
     });
   }
 }

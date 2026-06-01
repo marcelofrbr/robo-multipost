@@ -156,6 +156,11 @@ describe('DmFlowService', () => {
         'dmBotReplyWorkflow',
         expect.objectContaining({
           taskQueue: 'main',
+          workflowId: `dmbot-conv-1-${basePayload.igMessageId}`,
+          memo: {
+            conversationId: 'conv-1',
+            integrationId: 'int-1',
+          },
           args: [
             expect.objectContaining({
               conversationId: 'conv-1',
@@ -166,6 +171,25 @@ describe('DmFlowService', () => {
           ],
         })
       );
+    });
+
+    it('deve reativar e enfileirar quando a conversa estava CLOSED', async () => {
+      // ARRANGE
+      flowsRepository.getActiveFlowsForIntegration.mockResolvedValue([
+        dmFlow,
+      ] as any);
+      dmRepository.findByMetaMid.mockResolvedValue(null as any);
+      dmRepository.upsertConversation.mockResolvedValue({
+        id: 'conv-1',
+        status: 'CLOSED',
+      } as any);
+
+      // ACT
+      await service.handleIncomingDirectMessage(basePayload);
+
+      // ASSERT
+      expect(dmRepository.reactivate).toHaveBeenCalledWith('conv-1');
+      expect(workflowStart).toHaveBeenCalledTimes(1);
     });
   });
 });
