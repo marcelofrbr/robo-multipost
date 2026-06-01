@@ -31,9 +31,6 @@ import { VideoFunctionDto } from '@gitroom/nestjs-libraries/dtos/videos/video.fu
 import { UploadDto } from '@gitroom/nestjs-libraries/dtos/media/upload.dto';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { GetNotificationsDto } from '@gitroom/nestjs-libraries/dtos/notifications/get.notifications.dto';
-import axios from 'axios';
-import { Readable } from 'stream';
-import { lookup, extension } from 'mime-types';
 import * as Sentry from '@sentry/nestjs';
 import { socialIntegrationList, IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { getValidationSchemas } from '@gitroom/nestjs-libraries/chat/validation.schemas.helper';
@@ -60,7 +57,8 @@ export class PublicIntegrationsController {
   @UseInterceptors(FileInterceptor('file'))
   async uploadSimple(
     @GetOrgFromRequest() org: Organization,
-    @UploadedFile('file') file: Express.Multer.File
+    @UploadedFile('file') file: Express.Multer.File,
+    @GetPublicApiProfileId() publicApiProfileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
     if (!file) {
@@ -68,53 +66,30 @@ export class PublicIntegrationsController {
     }
 
     const getFile = await this.storage.uploadFile(file);
-    return this._mediaService.saveFile(
+    const media = await this._mediaService.saveFile(
       org.id,
       getFile.originalname,
-      getFile.path
+      getFile.path,
+      undefined,
+      publicApiProfileId
     );
+    return { id: media.id, path: media.path };
   }
 
   @Post('/upload-from-url')
   async uploadsFromUrl(
     @GetOrgFromRequest() org: Organization,
-    @Body() body: UploadDto
+    @Body() body: UploadDto,
+    @GetPublicApiProfileId() publicApiProfileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const response = await axios.get(body.url, {
-      responseType: 'arraybuffer',
-    });
-
-    const buffer = Buffer.from(response.data);
-    // AxiosHeaderValue agora é union (string | string[] | number | boolean);
-    // só fazemos split em string.
-    const contentTypeHeader = response.headers?.['content-type'];
-    const responseMime =
-      typeof contentTypeHeader === 'string'
-        ? contentTypeHeader.split(';')[0]?.trim()
-        : undefined;
-    const urlMime = lookup(body?.url?.split?.('?')?.[0]);
-    const mimetype = (urlMime || responseMime || 'image/jpeg') as string;
-    const ext = extension(mimetype) || 'jpg';
-
-    const getFile = await this.storage.uploadFile({
-      buffer,
-      mimetype,
-      size: buffer.length,
-      path: '',
-      fieldname: '',
-      destination: '',
-      stream: new Readable(),
-      filename: '',
-      originalname: `upload.${ext}`,
-      encoding: '',
-    });
-
-    return this._mediaService.saveFile(
+    const media = await this._mediaService.uploadFromUrl(
       org.id,
-      getFile.originalname,
-      getFile.path
+      body.url,
+      undefined,
+      publicApiProfileId
     );
+    return { id: media.id, path: media.path };
   }
 
   @Get('/find-slot/:id')
