@@ -1459,4 +1459,54 @@ describe('FlowsService', () => {
       expect(result).toHaveLength(1);
     });
   });
+
+  describe('quickCreateFlow', () => {
+    beforeEach(() => {
+      // Isola o comportamento de montagem dos nodes: o check de webhook tem
+      // logica propria (fetch + credenciais) coberta em outro describe.
+      jest
+        .spyOn(service as any, 'checkIntegrationWebhook')
+        .mockResolvedValue({ ok: true });
+      mockRepository.createFlow.mockResolvedValue({ id: 'flow-1' });
+      mockRepository.saveCanvas.mockResolvedValue(undefined);
+      mockRepository.updateFlowStatus.mockResolvedValue(undefined);
+      mockRepository.getFlow.mockResolvedValue({ id: 'flow-1' });
+    });
+
+    it('persiste handoffToBot=true no data do node SEND_DM', async () => {
+      await service.quickCreateFlow('org-1', {
+        name: 'Atendimento',
+        integrationId: 'int-1',
+        triggerType: 'comment_on_post',
+        dmMessage: 'Ola! Como posso ajudar?',
+        handoffToBot: true,
+      });
+
+      expect(mockRepository.saveCanvas).toHaveBeenCalledTimes(1);
+      const savedNodes = (mockRepository.saveCanvas.mock.calls[0] as any[])[2];
+      const dmNode = savedNodes.find(
+        (n: any) => n.type === FlowNodeType.SEND_DM
+      );
+      expect(dmNode).toBeDefined();
+      const data = JSON.parse(dmNode.data);
+      expect(data.handoffToBot).toBe(true);
+      expect(data.message).toBe('Ola! Como posso ajudar?');
+    });
+
+    it('nao grava handoffToBot quando a flag e ausente', async () => {
+      await service.quickCreateFlow('org-1', {
+        name: 'Atendimento',
+        integrationId: 'int-1',
+        triggerType: 'comment_on_post',
+        dmMessage: 'Ola!',
+      });
+
+      const savedNodes = (mockRepository.saveCanvas.mock.calls[0] as any[])[2];
+      const dmNode = savedNodes.find(
+        (n: any) => n.type === FlowNodeType.SEND_DM
+      );
+      const data = JSON.parse(dmNode.data);
+      expect(data.handoffToBot).toBeUndefined();
+    });
+  });
 });

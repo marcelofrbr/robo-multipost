@@ -157,6 +157,13 @@ export class QuickCreateFlowDto {
   @IsString()
   dmButtonUrl?: string;
 
+  // Apos enviar o DM inicial de um comment_on_post, semeia uma conversa de DM
+  // (BOT_ACTIVE, source='comment_handoff') para que o bot de atendimento por
+  // DM assuma quando a pessoa responder no Direct.
+  @IsOptional()
+  @IsBoolean()
+  handoffToBot?: boolean;
+
   // Fluxo de 2 etapas: DM inicial enviada com botao postback. So usado quando
   // requireFollow=true e triggerType=comment_on_post.
   @IsOptional()

@@ -522,6 +522,7 @@ export class FlowsService {
       const dmData: Record<string, any> = { message: body.dmMessage };
       if (body.dmButtonText) dmData.buttonText = body.dmButtonText;
       if (body.dmButtonUrl) dmData.buttonUrl = body.dmButtonUrl;
+      if (body.handoffToBot) dmData.handoffToBot = true;
       nodes.push({ type: 'SEND_DM', positionX: 250, positionY: 50 + nodes.length * 150, data: JSON.stringify(dmData) });
       edges.push({ sourceIndex: lastIndex, targetIndex: nodes.length - 1 });
     }
@@ -610,6 +611,7 @@ export class FlowsService {
       const dmData: Record<string, any> = { message: body.dmMessage };
       if (body.dmButtonText) dmData.buttonText = body.dmButtonText;
       if (body.dmButtonUrl) dmData.buttonUrl = body.dmButtonUrl;
+      if (body.handoffToBot) dmData.handoffToBot = true;
       nodes.push({
         type: 'SEND_DM',
         positionX: 250,
