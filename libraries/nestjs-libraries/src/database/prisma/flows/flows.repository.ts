@@ -344,6 +344,22 @@ export class FlowsRepository {
     });
   }
 
+  getFlowsForIntegration(integrationId: string) {
+    // Retorna todos os flows nao deletados da integration (qualquer status,
+    // incluindo PAUSED), com nodes, para o caller filtrar em memoria pelo
+    // tipo de gatilho. Usado pelo bot de DM para encontrar um flow
+    // 'direct_message' existente (que pode estar PAUSED) e reativa-lo.
+    return this._flow.model.flow.findMany({
+      where: {
+        integrationId,
+        deletedAt: null,
+      },
+      include: {
+        nodes: true,
+      },
+    });
+  }
+
   findPendingNextPublicationFlows(integrationId: string) {
     // Returns active flows for the integration that have not been bound to a
     // specific mediaId yet (triggerPostIds IS NULL). Caller must still filter
