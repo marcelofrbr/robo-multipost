@@ -16,6 +16,7 @@ import { Request, Response } from 'express';
 import { FlowsService } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.service';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { CredentialService } from '@gitroom/nestjs-libraries/database/prisma/credentials/credential.service';
+import { DmFlowService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-flow.service';
 import * as crypto from 'crypto';
 
 const DEFAULT_IG_WEBHOOK_VERIFY_TOKEN = 'multipost';
@@ -28,7 +29,8 @@ export class IgWebhookController {
   constructor(
     private _flowsService: FlowsService,
     private _integrationService: IntegrationService,
-    private _credentialService: CredentialService
+    private _credentialService: CredentialService,
+    private _dmFlowService: DmFlowService
   ) {}
 
   @Get('/')
@@ -211,6 +213,22 @@ export class IgWebhookController {
       igStoryId = reactionEvent.story_id || reactionEvent.story?.id;
     }
 
+    // DM comum (sem contexto de story e sem postback): roteia para o
+    // atendimento por DM. So enfileira o bot se houver flow direct_message
+    // ativo (kill-switch dentro do DmFlowService).
+    const incomingText: string = message?.text || '';
+    const incomingMid: string | undefined = message?.mid;
+    if (!igStoryId && !event?.postback && incomingText && incomingMid) {
+      await this.processDirectMessage({
+        igAccountId,
+        igThreadId: recipientId,
+        igMessageId: incomingMid,
+        igSenderId: senderId,
+        messageText: incomingText,
+      });
+      return;
+    }
+
     if (!igStoryId) {
       // Not story-related — ignore silently.
       return;
@@ -282,6 +300,43 @@ export class IgWebhookController {
         igStoryId: data.igStoryId,
         messageText: data.messageText,
         reaction: data.reaction,
+      });
+    }
+  }
+
+  private async processDirectMessage(data: {
+    igAccountId: string;
+    igThreadId?: string;
+    igMessageId: string;
+    igSenderId: string;
+    igSenderName?: string;
+    messageText: string;
+  }) {
+    const integrations =
+      await this._integrationService.getIntegrationsByInternalId(
+        data.igAccountId
+      );
+    this._logger.log(
+      `IG webhook: found ${integrations.length} integration(s) for IG account ${data.igAccountId} (direct message)`
+    );
+
+    for (const integration of integrations) {
+      const isInstagram =
+        integration.providerIdentifier === 'instagram' ||
+        integration.providerIdentifier === 'instagram-standalone';
+      if (!isInstagram || integration.disabled || integration.deletedAt) {
+        continue;
+      }
+
+      await this._dmFlowService.handleIncomingDirectMessage({
+        integrationId: integration.id,
+        organizationId: integration.organizationId,
+        profileId: integration.profileId ?? undefined,
+        igAccountId: data.igAccountId,
+        igSenderId: data.igSenderId,
+        igSenderName: data.igSenderName,
+        igMessageId: data.igMessageId,
+        messageText: data.messageText,
       });
     }
   }
