@@ -97,6 +97,18 @@ describe('DmRepository', () => {
     });
   });
 
+  describe('getById', () => {
+    it('deve buscar a conversa pelo id unico', async () => {
+      prisma.model.dmConversation.findUnique.mockResolvedValue(null as any);
+
+      await repo.getById('c1');
+
+      expect(prisma.model.dmConversation.findUnique).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+      });
+    });
+  });
+
   describe('setLastInbound', () => {
     it('deve atualizar lastInboundAt com a data atual', async () => {
       prisma.model.dmConversation.update.mockResolvedValue({} as any);

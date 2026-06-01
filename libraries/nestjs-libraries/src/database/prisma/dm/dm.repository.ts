@@ -42,6 +42,12 @@ export class DmRepository {
     });
   }
 
+  getById(id: string) {
+    return this._dmConversation.model.dmConversation.findUnique({
+      where: { id },
+    });
+  }
+
   setLastInbound(id: string) {
     return this._dmConversation.model.dmConversation.update({
       where: { id },
