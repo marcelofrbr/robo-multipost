@@ -162,6 +162,14 @@ export class CreateCommentAutomationTool implements AgentToolInterface {
           .string()
           .optional()
           .describe('Mensagem do follow-gate quando requireFollow=true'),
+        handoffToBot: z
+          .boolean()
+          .optional()
+          .describe(
+            'Quando true, apos enviar a DM a conversa passa a ser atendida ' +
+              'pelo bot de DM (atendimento por IA). Requer o bot de DM ' +
+              'configurado (configureDmBot). Padrao false.'
+          ),
       }),
       outputSchema: z.object({ output: z.any() }),
       execute: async (input: any) => {
@@ -182,6 +190,7 @@ export class CreateCommentAutomationTool implements AgentToolInterface {
             dmButtonUrl: input.dmButtonUrl,
             requireFollow: input.requireFollow,
             followGateMessage: input.followGateMessage,
+            handoffToBot: input.handoffToBot,
           },
           getProfileId()
         );

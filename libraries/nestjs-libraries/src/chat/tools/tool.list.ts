@@ -18,6 +18,8 @@ import {
   CreateCommentAutomationTool,
   SetAutomationStatusTool,
 } from '@gitroom/nestjs-libraries/chat/tools/automations.tool';
+import { DmBotConfigTool } from '@gitroom/nestjs-libraries/chat/tools/dm-bot.config.tool';
+import { DmEscalationsListTool } from '@gitroom/nestjs-libraries/chat/tools/dm-escalations.list.tool';
 
 export const toolList = [
   IntegrationListTool,
@@ -38,4 +40,6 @@ export const toolList = [
   ListInstagramPostsForAutomationTool,
   CreateCommentAutomationTool,
   SetAutomationStatusTool,
+  DmBotConfigTool,
+  DmEscalationsListTool,
 ];
