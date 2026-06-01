@@ -8,9 +8,9 @@ import { InstagramMessagingService } from '@gitroom/nestjs-libraries/integration
 import { resolveIgRoute } from '@gitroom/nestjs-libraries/integrations/social/instagram-route.resolver';
 import { DmRepository } from '@gitroom/nestjs-libraries/database/prisma/dm/dm.repository';
 import { DmBotService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-bot.service';
-import { DmRateLimitService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-rate-limit.service';
+import { isOutsideDmWindow } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-window.helper';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
-import { FlowExecutionStatus } from '@prisma/client';
+import { DmConversationStatus, FlowExecutionStatus } from '@prisma/client';
 import type { InstagramProvider } from '@gitroom/nestjs-libraries/integrations/social/instagram.provider';
 import type { InstagramDmButton } from '@gitroom/nestjs-libraries/integrations/social/instagram-dm-button.type';
 
@@ -19,9 +19,6 @@ const GATE_FALLBACK_MESSAGE =
 const GATE_EXHAUSTED_MESSAGE =
   'Não consegui confirmar que você está seguindo. Tente novamente mais tarde 😉';
 
-// Janela de mensageria da Meta: so e permitido enviar DM dentro de 24h
-// apos o ultimo inbound do usuario. Fora disso a Meta rejeita server-side.
-const DM_24H_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DM_HANDOFF_FALLBACK_MESSAGE =
   'Vou te conectar com um atendente humano, ja respondo.';
 
@@ -38,7 +35,6 @@ export class FlowActivity {
     private _unmatchedCommentService: UnmatchedCommentService,
     private _dmRepository: DmRepository,
     private _dmBotService: DmBotService,
-    private _dmRateLimitService: DmRateLimitService,
     private _notificationService: NotificationService
   ) {}
 
@@ -624,27 +620,18 @@ export class FlowActivity {
     reply: string;
   }): Promise<void> {
     // 1. Janela de 24h: fora dela a Meta rejeita. No-op com log.
+    // O rate limit por remetente e aplicado uma unica vez no intake
+    // (DmFlowService.handleIncomingDirectMessage), nao aqui — esta activity
+    // e re-tentada pelo Temporal e nao deve consumir cota em cada retry.
     const conversation = await this._dmRepository.getById(input.conversationId);
-    if (this.isOutsideDmWindow(conversation?.lastInboundAt)) {
+    if (isOutsideDmWindow(conversation?.lastInboundAt)) {
       this._logger.warn(
         `sendDmReply: conversa ${input.conversationId} fora da janela de 24h — nao enviado`
       );
       return;
     }
 
-    // 2. Rate limit por (integracao, remetente).
-    const allowed = await this._dmRateLimitService.allow(
-      input.integrationId,
-      input.igSenderId
-    );
-    if (!allowed) {
-      this._logger.warn(
-        `sendDmReply: rate limit atingido para integration=${input.integrationId} sender=${input.igSenderId} — nao enviado`
-      );
-      return;
-    }
-
-    // 3. Resolve rota (token/host) e envia.
+    // 2. Resolve rota (token/host) e envia.
     const integration = await this._integrationService.getIntegrationById(
       input.orgId,
       input.integrationId
@@ -684,20 +671,29 @@ export class FlowActivity {
     reason: string;
     fallbackMessage?: string;
   }): Promise<void> {
+    // Carrega a conversa ANTES do markHandoff para detectar a transicao.
+    // Se ja estava em HUMAN_HANDOFF, a activity esta sendo re-executada (ou
+    // outro caminho ja escalou): markHandoff e idempotente, mas a notificacao
+    // so deve sair na transicao, nao a cada re-execucao.
+    const conversation = await this._dmRepository.getById(input.conversationId);
+    const wasAlreadyHandoff =
+      conversation?.status === DmConversationStatus.HUMAN_HANDOFF;
+
     await this._dmRepository.markHandoff(input.conversationId, input.reason);
 
-    await this._notificationService.inAppNotification(
-      input.orgId,
-      'Atendimento por DM escalado',
-      `Uma conversa foi escalada para atendimento humano. Motivo: ${input.reason}`,
-      false,
-      false,
-      'info'
-    );
+    if (!wasAlreadyHandoff) {
+      await this._notificationService.inAppNotification(
+        input.orgId,
+        'Atendimento por DM escalado',
+        `Uma conversa foi escalada para atendimento humano. Motivo: ${input.reason}`,
+        false,
+        false,
+        'info'
+      );
+    }
 
     // Mensagem de espera ao usuario — apenas dentro da janela de 24h.
-    const conversation = await this._dmRepository.getById(input.conversationId);
-    if (this.isOutsideDmWindow(conversation?.lastInboundAt)) {
+    if (isOutsideDmWindow(conversation?.lastInboundAt)) {
       this._logger.warn(
         `escalateDmToHuman: conversa ${input.conversationId} fora da janela de 24h — handoff marcado, mensagem de espera nao enviada`
       );
@@ -745,14 +741,5 @@ export class FlowActivity {
       igSenderName: input.igSenderName,
       source: 'comment_handoff',
     });
-  }
-
-  // Verdadeiro quando estamos fora da janela de 24h da Meta (sem inbound
-  // conhecido tambem conta como fora, por seguranca).
-  private isOutsideDmWindow(lastInboundAt?: Date | null): boolean {
-    if (!lastInboundAt) {
-      return true;
-    }
-    return Date.now() - new Date(lastInboundAt).getTime() > DM_24H_WINDOW_MS;
   }
 }

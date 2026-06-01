@@ -1,6 +1,7 @@
 import { DmFlowService } from './dm-flow.service';
 import { FlowsRepository } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.repository';
 import { DmRepository } from '@gitroom/nestjs-libraries/database/prisma/dm/dm.repository';
+import { DmRateLimitService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-rate-limit.service';
 import { TemporalService } from 'nestjs-temporal-core';
 import { createMock } from '@gitroom/nestjs-libraries/test';
 import { MockProxy } from 'jest-mock-extended';
@@ -9,6 +10,7 @@ describe('DmFlowService', () => {
   let service: DmFlowService;
   let flowsRepository: MockProxy<FlowsRepository> & FlowsRepository;
   let dmRepository: MockProxy<DmRepository> & DmRepository;
+  let rateLimit: MockProxy<DmRateLimitService> & DmRateLimitService;
   let temporalService: MockProxy<TemporalService> & TemporalService;
   let workflowStart: jest.Mock;
 
@@ -38,6 +40,9 @@ describe('DmFlowService', () => {
     jest.clearAllMocks();
     flowsRepository = createMock<FlowsRepository>();
     dmRepository = createMock<DmRepository>();
+    rateLimit = createMock<DmRateLimitService>();
+    // Por padrao o rate limit permite — casos especificos sobrescrevem.
+    rateLimit.allow.mockResolvedValue(true);
     temporalService = createMock<TemporalService>();
     workflowStart = jest.fn();
     (temporalService as any).client = {
@@ -48,6 +53,7 @@ describe('DmFlowService', () => {
     service = new DmFlowService(
       flowsRepository,
       dmRepository,
+      rateLimit,
       temporalService
     );
   });
@@ -171,6 +177,32 @@ describe('DmFlowService', () => {
           ],
         })
       );
+    });
+
+    it('deve registrar inbound mas NAO enfileirar quando rate limit estourado', async () => {
+      // ARRANGE
+      flowsRepository.getActiveFlowsForIntegration.mockResolvedValue([
+        dmFlow,
+      ] as any);
+      dmRepository.findByMetaMid.mockResolvedValue(null as any);
+      dmRepository.upsertConversation.mockResolvedValue({
+        id: 'conv-1',
+        status: 'BOT_ACTIVE',
+      } as any);
+      rateLimit.allow.mockResolvedValue(false);
+
+      // ACT
+      await service.handleIncomingDirectMessage(basePayload);
+
+      // ASSERT
+      expect(dmRepository.appendMessage).toHaveBeenCalledWith(
+        'conv-1',
+        'user',
+        basePayload.messageText,
+        basePayload.igMessageId
+      );
+      expect(rateLimit.allow).toHaveBeenCalledWith('int-1', 'sender-1');
+      expect(workflowStart).not.toHaveBeenCalled();
     });
 
     it('deve reativar e enfileirar quando a conversa estava CLOSED', async () => {

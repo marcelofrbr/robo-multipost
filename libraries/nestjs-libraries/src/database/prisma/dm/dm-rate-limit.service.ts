@@ -8,9 +8,12 @@ const WINDOW_SECONDS = 3600;
  * Janela deslizante simples baseada em contador no Redis com TTL de 1h.
  * Limite configuravel via DM_BOT_RATE_LIMIT_PER_HOUR (default 20).
  *
- * Consumido pela activity `sendDmReply` na Fase 2 do atendimento por DM
- * (NAO e dead code): antes de responder, a activity chama `allow(...)` para
- * respeitar o teto de mensagens por hora por remetente.
+ * Consumido pelo `DmFlowService.handleIncomingDirectMessage` no intake do
+ * atendimento por DM (NAO e dead code): apos registrar o inbound e antes de
+ * enfileirar o bot no Temporal, o intake chama `allow(...)` UMA UNICA VEZ para
+ * respeitar o teto de mensagens por hora por remetente. Fica no intake (e nao
+ * na activity) porque a activity e re-tentada pelo Temporal e nao deve consumir
+ * cota em cada retry.
  */
 @Injectable()
 export class DmRateLimitService {

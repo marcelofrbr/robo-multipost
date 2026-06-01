@@ -3,6 +3,7 @@ import { TemporalService } from 'nestjs-temporal-core';
 import { DmConversationStatus } from '@prisma/client';
 import { FlowsRepository } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.repository';
 import { DmRepository } from '@gitroom/nestjs-libraries/database/prisma/dm/dm.repository';
+import { DmRateLimitService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-rate-limit.service';
 
 interface IncomingDirectMessagePayload {
   integrationId: string;
@@ -22,6 +23,7 @@ export class DmFlowService {
   constructor(
     private _flowsRepository: FlowsRepository,
     private _dmRepository: DmRepository,
+    private _rateLimit: DmRateLimitService,
     private _temporalService: TemporalService
   ) {}
 
@@ -83,6 +85,19 @@ export class DmFlowService {
       this._logger.log(
         `DM reativada (conversa ${conversation.id} estava CLOSED), bot enfileirado`
       );
+    }
+
+    // 4.2) Rate limit por (integracao, remetente), aplicado UMA UNICA VEZ no
+    //       intake. Fica aqui (e nao na activity sendDmReply) porque o Temporal
+    //       re-tenta a activity e nao queremos consumir cota em cada retry. O
+    //       inbound ja foi registrado acima; apenas nao enfileiramos o bot.
+    if (
+      !(await this._rateLimit.allow(payload.integrationId, payload.igSenderId))
+    ) {
+      this._logger.warn(
+        `DM rate limit atingido para integration=${payload.integrationId} sender=${payload.igSenderId} inbound registrado, bot nao enfileirado`
+      );
+      return;
     }
 
     // 5) Enfileira o bot via Temporal.

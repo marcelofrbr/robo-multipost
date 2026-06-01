@@ -1,16 +1,27 @@
 import { proxyActivities } from '@temporalio/workflow';
 import type { FlowActivity } from '@gitroom/orchestrator/activities/flow.activity';
 
-const { generateDmReply, sendDmReply, escalateDmToHuman } =
-  proxyActivities<FlowActivity>({
-    startToCloseTimeout: '5 minute',
-    taskQueue: 'main',
-    retry: {
-      maximumAttempts: 3,
-      backoffCoefficient: 2,
-      initialInterval: '10 seconds',
-    },
-  });
+// Geracao e idempotente: pode re-tentar sem efeito colateral externo.
+const { generateDmReply } = proxyActivities<FlowActivity>({
+  startToCloseTimeout: '5 minute',
+  taskQueue: 'main',
+  retry: {
+    maximumAttempts: 3,
+    backoffCoefficient: 2,
+    initialInterval: '10 seconds',
+  },
+});
+
+// Envio NAO pode re-tentar: a Meta nao tem idempotencia de DM, entao um retry
+// apos um envio bem-sucedido (mas com falha posterior na activity) mandaria
+// DM duplicado. maximumAttempts: 1 garante no maximo uma tentativa de envio.
+const { sendDmReply, escalateDmToHuman } = proxyActivities<FlowActivity>({
+  startToCloseTimeout: '5 minute',
+  taskQueue: 'main',
+  retry: {
+    maximumAttempts: 1,
+  },
+});
 
 export interface DmBotReplyInput {
   conversationId: string;
