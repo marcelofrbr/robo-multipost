@@ -965,8 +965,8 @@ export class FlowsService {
     }
   }
 
-  getExecution(id: string) {
-    return this._flowsRepository.getExecution(id);
+  getExecution(orgId: string, id: string) {
+    return this._flowsRepository.getExecution(orgId, id);
   }
 
   appendExecutionLog(
@@ -976,8 +976,8 @@ export class FlowsService {
     return this._flowsRepository.appendExecutionLog(id, entry);
   }
 
-  getExecutions(flowId: string, page?: number, limit?: number) {
-    return this._flowsRepository.getExecutions(flowId, page, limit);
+  getExecutions(orgId: string, flowId: string, page?: number, limit?: number) {
+    return this._flowsRepository.getExecutions(orgId, flowId, page, limit);
   }
 
   updateExecution(

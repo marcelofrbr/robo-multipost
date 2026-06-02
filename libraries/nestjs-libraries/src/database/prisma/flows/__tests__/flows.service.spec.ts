@@ -23,6 +23,7 @@ const mockRepository = {
   saveCanvas: jest.fn(),
   updateFlowStatus: jest.fn(),
   getExecutions: jest.fn(),
+  getExecution: jest.fn(),
   createExecution: jest.fn(),
   updateExecution: jest.fn(),
   findExistingExecution: jest.fn(),
@@ -1688,6 +1689,50 @@ describe('FlowsService', () => {
           enabled: true,
         })
       ).rejects.toThrow('Integracao nao encontrada');
+    });
+  });
+
+  // --- Executions (escopo de organizacao / anti-IDOR) ---
+
+  describe('getExecutions', () => {
+    it('deve repassar orgId, flowId, page e limit para o repo', async () => {
+      mockRepository.getExecutions.mockResolvedValue([]);
+
+      await service.getExecutions('org-1', 'flow-1', 2, 50);
+
+      expect(mockRepository.getExecutions).toHaveBeenCalledWith(
+        'org-1',
+        'flow-1',
+        2,
+        50
+      );
+    });
+
+    it('deve repassar orgId mesmo sem page/limit', async () => {
+      mockRepository.getExecutions.mockResolvedValue([]);
+
+      await service.getExecutions('org-1', 'flow-1');
+
+      expect(mockRepository.getExecutions).toHaveBeenCalledWith(
+        'org-1',
+        'flow-1',
+        undefined,
+        undefined
+      );
+    });
+  });
+
+  describe('getExecution', () => {
+    it('deve repassar orgId e executionId para o repo (org guard)', async () => {
+      mockRepository.getExecution.mockResolvedValue({ id: 'exec-1' });
+
+      const result = await service.getExecution('org-1', 'exec-1');
+
+      expect(mockRepository.getExecution).toHaveBeenCalledWith(
+        'org-1',
+        'exec-1'
+      );
+      expect(result).toEqual({ id: 'exec-1' });
     });
   });
 });

@@ -285,15 +285,21 @@ export class FlowsRepository {
     });
   }
 
-  getExecution(id: string) {
+  getExecution(orgId: string, id: string) {
+    // Org guard: so retorna a execucao se o flow dono pertence a org do
+    // requisitante. Sem o filtro pela relacao `flow`, qualquer usuario
+    // autenticado poderia ler logs de execucoes de outra org adivinhando ids
+    // (IDOR cross-tenant).
     return this._flowExecution.model.flowExecution.findFirst({
-      where: { id },
+      where: { id, flow: { organizationId: orgId } },
     });
   }
 
-  getExecutions(flowId: string, page = 1, limit = 20) {
+  getExecutions(orgId: string, flowId: string, page = 1, limit = 20) {
+    // Org guard: alem do flowId, filtra pela org dona do flow para impedir
+    // enumeracao de execucoes de flows de outra org (IDOR cross-tenant).
     return this._flowExecution.model.flowExecution.findMany({
-      where: { flowId },
+      where: { flowId, flow: { organizationId: orgId } },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
