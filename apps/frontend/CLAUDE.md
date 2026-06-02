@@ -99,7 +99,8 @@ The `--color-custom*` variables are **deprecated**. Use `--new-*` tokens and Tai
 | `src/components/launches/` | Largest surface — composer, calendar, AI modals (~60 components) |
 | `src/components/launches/helpers/mode.tab.component.tsx` | Shared `ModeTab` for T2X/I2X tabs in AI modals (image, video) |
 | `src/components/launches/helpers/reference.image.dropzone.component.tsx` | Shared dropzone for I2I/I2V reference image (drag-drop + URL fallback, POSTs to `/media/upload-server`). Reuse instead of inlining file-upload logic in new modals |
-| `src/components/automations/logs/logs.component.tsx` | Unbound IG comment inbox (Dark Posts / Logs page at `/automacoes/logs`) — destino dos comentários em mídias não monitoradas por nenhuma automação |
+| `src/components/automations/logs/logs.component.tsx` | Unbound IG comment inbox (Dark Posts / Logs page at `/automacoes/logs`) — destino dos comentarios em midias nao monitoradas por nenhuma automacao |
+| `src/components/automations/dm-escalations.component.tsx` | Inbox de escalacoes de DM (rota `/automacoes/escalacoes`) -- lista conversas escaladas para atendimento humano e permite resolve-las via `POST /flows/dm/escalations/:id/resolve` |
 | `src/components/automations/ad-aliases-field.component.tsx` | Shared `<AdAliasesField />` used in both the Wizard and Flow Builder — parity component for "Dark Post IDs" trigger config |
 | `src/components/automations/hooks/use-unmatched-comments.ts` | SWR hooks (`useInbox`, `useAliases`, `useAliasLookup`) + `createInboxActions(fetch, mutators)` mutation factory (mutate-as-parameter pattern — see SWR section above) |
 | `src/components/launches/ai.image.tsx` / `ai.video.tsx` / `ai.search.tsx` | AI generation modals — all 700px width, sticky header without `-mt`/`pt` quirks, X inside same flex row as `TopTitle` |

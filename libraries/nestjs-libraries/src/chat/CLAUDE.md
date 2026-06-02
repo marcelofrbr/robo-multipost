@@ -89,9 +89,11 @@ Meta limits **one `sendPrivateReply` per comment**. After the postback, the 24h 
 | `knowledge.query.tool.ts` | Query the profile's Knowledge Base (RAG) |
 | `web-search.tool.ts` | Web search via `AiWebSearchService` |
 | `upload.media.from.url.tool.ts` | Host external media from a public URL via `MediaService.uploadFromUrl` → `{ id, path }` for use as a post attachment |
-| `automations.tool.ts` | Flows over MCP: `listAutomations`, `listInstagramPostsForAutomation`, `createCommentAutomation` (maps to `QuickCreateFlowDto`), `setAutomationStatus`, via `FlowsService` |
+| `automations.tool.ts` | Flows over MCP: `listAutomations`, `listInstagramPostsForAutomation`, `createCommentAutomation` (maps to `QuickCreateFlowDto`; inclui campo `handoffToBot`), `setAutomationStatus`, via `FlowsService` |
 | `media.list.tool.ts` | `listMedia`: lists media in the org/profile gallery via `AsyncLocalStorage` (no `orgId` in schema) |
 | `media.cleanup.tool.ts` | `cleanupMedia`: triggers `MediaCleanupService.cleanup()` and returns `{ deleted, skipped, failed }` |
+| `dm-bot.config.tool.ts` | `configureDmBot`: liga/desliga o bot de DM de um perfil (seta o status do Flow `direct_message`) |
+| `dm-escalations.list.tool.ts` | `listDmEscalations`: lista conversas de DM escaladas para atendimento humano |
 | `tool.list.ts` | Central registry of available tools |
 | `tool.context.helper.ts` | Helper to extract org/profile from `AsyncLocalStorage` |
 
