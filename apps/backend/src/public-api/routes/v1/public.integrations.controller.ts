@@ -118,7 +118,8 @@ export class PublicIntegrationsController {
   @CheckPolicies([AuthorizationActions.Create, Sections.POSTS_PER_MONTH])
   async createPost(
     @GetOrgFromRequest() org: Organization,
-    @Body() rawBody: any
+    @Body() rawBody: any,
+    @GetPublicApiProfileId() publicApiProfileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
     const body = await this._postsService.mapTypeToPost(
@@ -128,8 +129,10 @@ export class PublicIntegrationsController {
     );
     body.type = rawBody.type;
 
-    console.log(JSON.stringify(body, null, 2));
-    return this._postsService.createPost(org.id, body);
+    // Carimba o post com o perfil da chave de API (quando for chave de perfil),
+    // para que ele apareca no dashboard filtrado por perfil. Sem isso o post
+    // nasce com profileId null e fica invisivel na visao do perfil.
+    return this._postsService.createPost(org.id, body, publicApiProfileId);
   }
 
   @Delete('/posts/:id')

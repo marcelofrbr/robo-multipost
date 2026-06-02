@@ -104,6 +104,50 @@ describe('PublicIntegrationsController - uploadSimple', () => {
   });
 });
 
+describe('PublicIntegrationsController - createPost', () => {
+  let controller: PublicIntegrationsController;
+  let postsService: { mapTypeToPost: jest.Mock; createPost: jest.Mock };
+
+  beforeEach(() => {
+    postsService = {
+      mapTypeToPost: jest.fn().mockImplementation(async (raw) => ({ ...raw })),
+      createPost: jest.fn().mockResolvedValue([{ postId: 'p1' }]),
+    };
+    controller = new PublicIntegrationsController(
+      {} as any,
+      postsService as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+  });
+
+  it('chave de perfil: carimba o post com o profileId (fica visivel no dashboard)', async () => {
+    const raw = { type: 'schedule', date: '2026-06-06T12:00:00.000Z', posts: [] as any[] };
+
+    await controller.createPost({ id: 'org-1' } as any, raw as any, 'profile-1');
+
+    expect(postsService.createPost).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ type: 'schedule' }),
+      'profile-1'
+    );
+  });
+
+  it('chave de org (sem profileId): mantem comportamento, profileId undefined', async () => {
+    const raw = { type: 'schedule', date: '2026-06-06T12:00:00.000Z', posts: [] as any[] };
+
+    await controller.createPost({ id: 'org-1' } as any, raw as any, undefined);
+
+    expect(postsService.createPost).toHaveBeenCalledWith(
+      'org-1',
+      expect.any(Object),
+      undefined
+    );
+  });
+});
+
 describe('PublicIntegrationsController - uploadsFromUrl', () => {
   let controller: PublicIntegrationsController;
   let mediaService: { uploadFromUrl: jest.Mock };
