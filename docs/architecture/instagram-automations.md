@@ -324,3 +324,142 @@ pnpm --filter ./apps/frontend exec tsc --noEmit -p tsconfig.json
   FlowActivity permitem reusar o IG User Token cadastrado em Settings
   para integrations conectadas via Facebook Business, sem reconectar.
 - Paridade do Flow Builder com o wizard (follow gate fields + button CTA).
+- Atendimento conversacional por DM (bot com IA) + handoff do
+  `comment_on_post` para o Direct. Ver secao 10.
+
+---
+
+## 10. Atendimento conversacional por DM (bot com IA)
+
+Terceiro gatilho do subsistema, alem de `comment_on_post` e `story_reply`:
+o gatilho **`direct_message`**. Um bot responde mensagens diretas (DM) do
+Instagram usando IA com RAG (base de conhecimento do perfil) e persona,
+com escalacao FAIL-SAFE para um humano (o bot nunca inventa resposta).
+
+### 10.1 Fluxo de ponta a ponta
+
+```
+Usuario manda DM no Instagram
+   -> Webhook /public/ig-webhook (campo "messages", HMAC validado)
+   -> IgWebhookController.processMessagingEvent
+        - detecta DM "comum" (sem reply_to.story, sem postback)
+        - despacha DmFlowService.handleIncomingDirectMessage
+   -> DmFlowService (apps/.../prisma/dm/dm-flow.service.ts)
+        1. KILL-SWITCH: so prossegue se existir um Flow ACTIVE com trigger
+           'direct_message' para a integration. Sem ele = no-op total.
+        2. IDEMPOTENCIA: ignora se o metaMid (igMessageId) ja foi registrado.
+        3. Upsert da DmConversation + registra o inbound (DmMessage role=user).
+        4. Se a conversa esta em HUMAN_HANDOFF -> registra inbound e NAO
+           enfileira o bot (um humano assumiu). Se estava CLOSED e a pessoa
+           voltou a falar -> reativa para BOT_ACTIVE.
+        4.2 RATE LIMIT por (integration, remetente) aplicado UMA UNICA VEZ no
+            intake (nao na activity, para nao consumir cota em cada retry do
+            Temporal). Estourou -> inbound registrado, bot nao enfileirado.
+        5. Enfileira Temporal dmBotReplyWorkflow (taskQueue 'main',
+           workflowId 'dmbot-<conversationId>-<igMessageId>').
+   -> dmBotReplyWorkflow (apps/orchestrator/src/workflows/dm-bot-reply.workflow.ts)
+        - generateDmReply (retry ate 3x, idempotente)
+        - se result.escalate -> escalateDmToHuman (retry 1x) e termina
+        - senao -> sendDmReply (retry 1x; envio NAO e retentavel porque a
+          Meta nao tem idempotencia de DM: um retry pos-envio duplicaria a DM)
+   -> generateDmReply -> DmBotService.generateReply (RAG + persona + IA)
+   -> sendDmReply -> InstagramMessagingService.sendDmWithToken
+        (respeita a janela de 24h da Meta)
+```
+
+### 10.2 Guardrails (defesa em camadas)
+
+| Guardrail | Onde | Comportamento |
+|---|---|---|
+| **Kill-switch por perfil** | `DmFlowService` (Flow status) | So responde se houver Flow `direct_message` com status **ACTIVE**. PAUSED/DRAFT/ARCHIVED = bot desligado para aquele perfil. Liga/desliga sem apagar config |
+| **Idempotencia** | `DmRepository.findByMetaMid` + `DmMessage.metaMid @unique` | Re-entrega do webhook nao gera resposta duplicada |
+| **Escalacao fail-safe** | `DmBotService.generateReply` | Se a IA nao esta configurada (412), a geracao falha (todas as tentativas), a confianca e baixa, ou o usuario pede atendimento humano (regex pt/en), retorna `escalate=true`. A excecao NUNCA escapa do metodo (nao derruba o workflow). O bot **nunca inventa** |
+| **Inbox de escalacao** | `DmConversation.status = HUMAN_HANDOFF` | A conversa escalada aparece no inbox "Atendimento humano" (tela de Automacoes). `escalateDmToHuman` envia a mensagem de fallback configurada (dentro da janela de 24h) e marca o handoff |
+| **Rate limit** | `DmRateLimitService` | Limite por (integration, remetente). Env `DM_BOT_RATE_LIMIT_PER_HOUR` (default 20). Aplicado no intake, nao na activity |
+| **Cap por conversa** | `DmConversation.botReplyCount` | Teto de respostas do bot na mesma conversa. Env `DM_BOT_MAX_REPLIES_PER_CONVERSATION` (default 50) |
+| **Janela de 24h** | `dm-window.helper.ts` + `sendDmReply`/`escalateDmToHuman` | A Meta so permite enviar DM dentro de 24h apos a ultima mensagem do usuario. Fora da janela o envio e suprimido (so registra/loga) |
+| **Anti prompt-injection** | `DmBotService` system prompt | Mensagem, historico e fatos do KB sao DADO nao-confiavel, embrulhados em `<source>`/`<history>`/`<user_message>`. A instrucao de sistema sempre prevalece sobre conteudo externo |
+
+### 10.3 Geracao da resposta (DmBotService)
+
+`DmBotService.generateReply` (em
+`libraries/nestjs-libraries/src/database/prisma/dm/dm-bot.service.ts`):
+
+1. Heuristica: pedido explicito de humano (regex pt/en) escala na hora, sem
+   gastar IA/RAG.
+2. RAG best-effort via `KnowledgeService.query` (nunca lanca; retorna `[]`
+   quando o KB esta desabilitado ou falha).
+3. System prompt = persona (`loadPersonaBlock`) + instrucao de atendimento +
+   aviso anti prompt-injection. Os FATOS do KB **nao** ficam no system; vao no
+   turno de usuario dentro de `<source>`.
+4. Modelo resolvido por `AiClientFactory.text(orgId, profileId)` (principal +
+   fallback). Tudo dentro de `try/catch`: qualquer falha -> `escalate=true`.
+
+### 10.4 Handoff comentario -> DM (a partir do `comment_on_post`)
+
+No `comment_on_post`, o toggle **"Entregar a conversa pro bot de DM
+(handoff)"** liga o handoff. Depois que o DM inicial do fluxo de comentario e
+enviado, a activity **`seedDmHandoff`** (em
+`apps/orchestrator/src/activities/flow.activity.ts`) faz upsert de uma
+`DmConversation` com `source = 'comment_handoff'` e status `BOT_ACTIVE`. A
+partir dai o bot assume a conversa no Direct nas proximas mensagens do
+usuario (que caem no fluxo normal do `direct_message`). No MCP, o parametro
+`handoffToBot` em `createCommentAutomation` ativa o mesmo comportamento.
+
+### 10.5 Onde a config vive
+
+- **Flow `direct_message`**: o liga/desliga e o status do Flow
+  (ACTIVE = ligado, PAUSED = desligado). Criado/atualizado por
+  `FlowsService.createOrUpdateDirectMessageBotFlow` a partir do
+  `DmBotConfigDto` (`integrationId`, `enabled`, `fallbackMessage`).
+- **Node TRIGGER**: o `triggerType` fica no `label` do no TRIGGER
+  (`label === 'direct_message'`) ou no `data` JSON (`{ triggerType:
+  'direct_message' }`). `DmFlowService.getTriggerType` le ambos.
+- **UI**: modal/wizard "Atendimento por DM (IA)" (`enabled` + mensagem de
+  fallback) com paridade no Flow Builder. Inbox "Atendimento humano" lista as
+  escalacoes (`status = HUMAN_HANDOFF`).
+
+### 10.6 Endpoints e tools MCP
+
+- REST (backend): `GET /flows/dm/escalations` (lista) e
+  `POST /flows/dm/escalations/:id/resolve` (fecha a conversa).
+- MCP: `configureDmBot` (liga/desliga + fallback por integration),
+  `listDmEscalations` (lista escalacoes do perfil ativo) e `handoffToBot`
+  (entrega a conversa de um comentario para o bot de DM). Resolvem
+  org/perfil via `AsyncLocalStorage` (nunca aceitam `orgId` no schema).
+
+### 10.7 Arquivos-chave (DM)
+
+```
+libraries/nestjs-libraries/src/database/prisma/dm/
+  dm.repository.ts            # CRUD de DmConversation/DmMessage (upsert, findByMetaMid,
+                              #   appendMessage, getRecentMessages, listEscalations,
+                              #   reactivate, closeConversationForOrg)
+  dm-flow.service.ts          # intake do webhook: kill-switch, idempotencia, rate
+                              #   limit, enfileira o dmBotReplyWorkflow
+  dm-bot.service.ts           # geracao da resposta (RAG + persona + IA + fail-safe)
+  dm-rate-limit.service.ts    # rate limit por (integration, remetente)
+  dm-window.helper.ts         # calculo da janela de 24h da Meta
+
+apps/orchestrator/src/
+  workflows/dm-bot-reply.workflow.ts   # workflow do bot (generate -> escalate|send)
+  activities/flow.activity.ts          # generateDmReply, sendDmReply,
+                                       #   escalateDmToHuman, seedDmHandoff
+
+apps/backend/src/api/routes/
+  ig-webhook.controller.ts             # branch de DM comum -> DmFlowService
+  flows.controller.ts                  # /dm/escalations (GET + resolve)
+
+libraries/nestjs-libraries/src/chat/tools/
+  dm-bot.config.tool.ts                # tool MCP configureDmBot
+  dm-escalations.list.tool.ts          # tool MCP listDmEscalations
+
+libraries/nestjs-libraries/src/dtos/flows/flow.dto.ts   # DmBotConfigDto
+```
+
+### 10.8 Schema (modelos novos)
+
+- `DmConversation` (`status: BOT_ACTIVE | HUMAN_HANDOFF | CLOSED`,
+  `source`, `botReplyCount`, `lastInboundAt`, `escalationReason`,
+  `@@unique([integrationId, igSenderId])`).
+- `DmMessage` (`role`, `text`, `metaMid @unique` para idempotencia).
