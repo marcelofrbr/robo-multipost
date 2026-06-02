@@ -21,6 +21,7 @@ import {
   UpdateFlowStatusDto,
   SaveCanvasDto,
   QuickCreateFlowDto,
+  DmBotConfigDto,
 } from '@gitroom/nestjs-libraries/dtos/flows/flow.dto';
 
 @ApiTags('Flows')
@@ -84,6 +85,20 @@ export class FlowsController {
     @Param('id') id: string
   ) {
     return this._dmFlowService.resolveConversation(org.id, id);
+  }
+
+  @Post('/dm/bot')
+  async createOrUpdateDmBot(
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
+    @Body() body: DmBotConfigDto
+  ) {
+    return this._flowsService.createOrUpdateDirectMessageBotFlow(
+      org.id,
+      body.integrationId,
+      { enabled: body.enabled, fallbackMessage: body.fallbackMessage },
+      profile?.id
+    );
   }
 
   @Post('/')

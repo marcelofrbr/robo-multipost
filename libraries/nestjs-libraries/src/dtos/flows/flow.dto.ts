@@ -200,3 +200,18 @@ export class SaveCanvasDto {
   @Type(() => FlowEdgeDto)
   edges: FlowEdgeDto[];
 }
+
+// Configuracao do bot de atendimento por DM (trigger direct_message).
+// enabled liga/desliga o Flow (ACTIVE/PAUSED); fallbackMessage e a mensagem
+// usada quando a conversa precisa escalar para um humano.
+export class DmBotConfigDto {
+  @IsString()
+  integrationId: string;
+
+  @IsBoolean()
+  enabled: boolean;
+
+  @IsOptional()
+  @IsString()
+  fallbackMessage?: string;
+}

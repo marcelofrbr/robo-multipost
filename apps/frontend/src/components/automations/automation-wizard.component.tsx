@@ -73,6 +73,7 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
   const [dmMessage, setDmMessage] = useState('');
   const [dmButtonText, setDmButtonText] = useState('');
   const [dmButtonUrl, setDmButtonUrl] = useState('');
+  const [handoffToBot, setHandoffToBot] = useState(false);
   const [showAddLink, setShowAddLink] = useState(false);
   const [requireFollow, setRequireFollow] = useState(false);
   const [followGateMessage, setFollowGateMessage] = useState(
@@ -138,6 +139,9 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
     }
     if (dmCfg.buttonText) setDmButtonText(dmCfg.buttonText);
     if (dmCfg.buttonUrl) setDmButtonUrl(dmCfg.buttonUrl);
+    if (typeof dmCfg.handoffToBot === 'boolean') {
+      setHandoffToBot(dmCfg.handoffToBot);
+    }
     if (typeof triggerCfg.requireFollow === 'boolean') {
       setRequireFollow(triggerCfg.requireFollow);
     }
@@ -268,6 +272,9 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
           body.dmButtonText = dmButtonText.trim();
           body.dmButtonUrl = dmButtonUrl.trim();
         }
+        if (handoffToBot) {
+          body.handoffToBot = true;
+        }
       }
       body.requireFollow = requireFollow;
       if (requireFollow && followGateMessage.trim()) {
@@ -317,7 +324,7 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
   }, [
     canSave, name, integrationId, postMode, selectedPostIds,
     keywordMode, keywords, matchMode, enableReply, replyMessages,
-    enableDm, dmMessage, dmButtonText, dmButtonUrl,
+    enableDm, dmMessage, dmButtonText, dmButtonUrl, handoffToBot,
     requireFollow, followGateMessage,
     openingDmMessage, openingDmButtonText, alreadyFollowedButtonText, gateExhaustedMessage, maxGateAttempts,
     isEditing, flowId, fetchApi, router, toaster, t,
@@ -649,6 +656,38 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
                   ? `${dmButtonText} · ${dmButtonUrl}`
                   : `+ ${t('story_add_link', 'Adicionar um link')}`}
               </button>
+
+              {/* Handoff: entregar a conversa pro bot de DM */}
+              <div className="mt-[16px] flex items-center justify-between gap-[12px] p-[12px] rounded-[8px] bg-sixth border border-fifth">
+                <div>
+                  <div className="text-[13px] text-textColor">
+                    {t(
+                      'wizard_handoff_to_bot',
+                      'Entregar a conversa pro bot de DM (handoff)'
+                    )}
+                  </div>
+                  <div className="text-[11px] text-customColor18 mt-[2px]">
+                    {t(
+                      'wizard_handoff_to_bot_hint',
+                      'Quando a pessoa responder a DM, o bot de atendimento assume a conversa.'
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  aria-pressed={handoffToBot}
+                  onClick={() => setHandoffToBot((v) => !v)}
+                  className={`relative w-[44px] h-[24px] rounded-full transition-colors flex-shrink-0 ${
+                    handoffToBot ? 'bg-btnPrimary' : 'bg-customColor18/30'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-[2px] w-[20px] h-[20px] rounded-full bg-white transition-all ${
+                      handoffToBot ? 'left-[22px]' : 'left-[2px]'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
 
             {/* Extras — follow gate */}
