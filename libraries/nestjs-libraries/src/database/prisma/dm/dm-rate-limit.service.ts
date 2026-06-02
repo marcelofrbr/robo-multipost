@@ -20,7 +20,7 @@ export class DmRateLimitService {
   async allow(integrationId: string, igSenderId: string): Promise<boolean> {
     const limit =
       parseInt(process.env.DM_BOT_RATE_LIMIT_PER_HOUR || '20', 10) || 20;
-    const key = `dmbot:rl:${integrationId}:${igSenderId}`;
+    const key = `postiz:dmbot:rl:${integrationId}:${igSenderId}`;
 
     // INCR + EXPIRE atomicos via pipeline para evitar contador sem TTL caso
     // o processo morra entre as duas chamadas (chave vazaria para sempre).

@@ -54,9 +54,9 @@ describe('DmRateLimitService', () => {
       const result = await service.allow('int-1', 'sender-1');
 
       // ASSERT
-      expect(chain.incr).toHaveBeenCalledWith('dmbot:rl:int-1:sender-1');
+      expect(chain.incr).toHaveBeenCalledWith('postiz:dmbot:rl:int-1:sender-1');
       expect(chain.expire).toHaveBeenCalledWith(
-        'dmbot:rl:int-1:sender-1',
+        'postiz:dmbot:rl:int-1:sender-1',
         3600
       );
       expect(chain.exec).toHaveBeenCalledTimes(1);
