@@ -124,6 +124,13 @@ export class DmRepository {
     });
   }
 
+  closeConversationForOrg(id: string, orgId: string) {
+    return this._dmConversation.model.dmConversation.update({
+      where: { id, organizationId: orgId },
+      data: { status: DmConversationStatus.CLOSED },
+    });
+  }
+
   reactivate(id: string) {
     return this._dmConversation.model.dmConversation.update({
       where: { id },

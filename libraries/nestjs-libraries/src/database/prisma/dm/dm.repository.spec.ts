@@ -253,6 +253,19 @@ describe('DmRepository', () => {
     });
   });
 
+  describe('closeConversationForOrg', () => {
+    it('deve atualizar status para CLOSED com escopo por org', async () => {
+      prisma.model.dmConversation.update.mockResolvedValue({} as any);
+
+      await repo.closeConversationForOrg('c1', 'org-1');
+
+      expect(prisma.model.dmConversation.update).toHaveBeenCalledWith({
+        where: { id: 'c1', organizationId: 'org-1' },
+        data: { status: 'CLOSED' },
+      });
+    });
+  });
+
   describe('reactivate', () => {
     it('deve reativar a conversa setando status BOT_ACTIVE', async () => {
       prisma.model.dmConversation.update.mockResolvedValue({} as any);

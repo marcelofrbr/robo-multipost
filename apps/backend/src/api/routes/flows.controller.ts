@@ -14,6 +14,7 @@ import { Organization, Profile } from '@prisma/client';
 import { ApiTags } from '@nestjs/swagger';
 import { FlowsService } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.service';
 import { CredentialService } from '@gitroom/nestjs-libraries/database/prisma/credentials/credential.service';
+import { DmFlowService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-flow.service';
 import {
   CreateFlowDto,
   UpdateFlowDto,
@@ -27,7 +28,8 @@ import {
 export class FlowsController {
   constructor(
     private _flowsService: FlowsService,
-    private _credentialService: CredentialService
+    private _credentialService: CredentialService,
+    private _dmFlowService: DmFlowService
   ) {}
 
   @Get('/webhook-config')
@@ -66,6 +68,22 @@ export class FlowsController {
     @GetProfileFromRequest() profile: Profile | null
   ) {
     return this._flowsService.getFlows(org.id, profile?.id);
+  }
+
+  @Get('/dm/escalations')
+  async getDmEscalations(
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null
+  ) {
+    return this._dmFlowService.listEscalations(org.id, profile?.id);
+  }
+
+  @Post('/dm/escalations/:id/resolve')
+  async resolveDmEscalation(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    return this._dmFlowService.resolveConversation(org.id, id);
   }
 
   @Post('/')

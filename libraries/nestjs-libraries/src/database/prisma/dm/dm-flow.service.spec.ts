@@ -224,4 +224,57 @@ describe('DmFlowService', () => {
       expect(workflowStart).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('listEscalations', () => {
+    it('deve delegar ao repositorio passando org e profile', async () => {
+      // ARRANGE
+      dmRepository.listEscalations.mockResolvedValue([
+        { id: 'conv-1' },
+      ] as any);
+
+      // ACT
+      const result = await service.listEscalations('org-1', 'prof-1');
+
+      // ASSERT
+      expect(dmRepository.listEscalations).toHaveBeenCalledWith(
+        'org-1',
+        'prof-1'
+      );
+      expect(result).toEqual([{ id: 'conv-1' }]);
+    });
+
+    it('deve delegar ao repositorio sem profile quando nao fornecido', async () => {
+      // ARRANGE
+      dmRepository.listEscalations.mockResolvedValue([] as any);
+
+      // ACT
+      await service.listEscalations('org-1');
+
+      // ASSERT
+      expect(dmRepository.listEscalations).toHaveBeenCalledWith(
+        'org-1',
+        undefined
+      );
+    });
+  });
+
+  describe('resolveConversation', () => {
+    it('deve fechar a conversa com escopo por org', async () => {
+      // ARRANGE
+      dmRepository.closeConversationForOrg.mockResolvedValue({
+        id: 'conv-1',
+        status: 'CLOSED',
+      } as any);
+
+      // ACT
+      const result = await service.resolveConversation('org-1', 'conv-1');
+
+      // ASSERT
+      expect(dmRepository.closeConversationForOrg).toHaveBeenCalledWith(
+        'conv-1',
+        'org-1'
+      );
+      expect(result).toEqual({ id: 'conv-1', status: 'CLOSED' });
+    });
+  });
 });

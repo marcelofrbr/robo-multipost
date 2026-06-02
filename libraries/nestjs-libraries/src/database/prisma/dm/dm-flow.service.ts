@@ -132,6 +132,14 @@ export class DmFlowService {
     });
   }
 
+  async listEscalations(orgId: string, profileId?: string) {
+    return this._dmRepository.listEscalations(orgId, profileId);
+  }
+
+  async resolveConversation(orgId: string, conversationId: string) {
+    return this._dmRepository.closeConversationForOrg(conversationId, orgId);
+  }
+
   private getTriggerType(flow: {
     nodes?: Array<{ type: string; label?: string | null; data: string | null }>;
   }): string | undefined {
