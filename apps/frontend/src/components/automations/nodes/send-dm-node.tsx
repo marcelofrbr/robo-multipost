@@ -36,7 +36,7 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
           <polygon points="22 2 15 22 11 13 2 9 22 2" />
         </svg>
         <span className="text-[13px] font-semibold" style={{ color: '#c084fc' }}>
-          {t('send_dm_node_label', 'Send DM')}
+          {t('send_dm_node_label', 'Enviar DM')}
         </span>
       </div>
       {message && (

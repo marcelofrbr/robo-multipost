@@ -19,9 +19,6 @@ type TriggerType =
   | 'repost_story'
   | 'direct_message';
 
-const DM_BOT_FALLBACK_DEFAULT_PT =
-  'Um momento! Vou te transferir para um atendente humano que vai continuar essa conversa.';
-
 interface TriggerOption {
   id: TriggerType;
   titleKey: string;
@@ -75,7 +72,7 @@ export const NovaAutomacaoModal: FC<Props> = ({ open, onClose, onCreated }) => {
   const [integrationId, setIntegrationId] = useState('');
   const [creating, setCreating] = useState(false);
   const [dmBotEnabled, setDmBotEnabled] = useState(true);
-  const [dmBotFallback, setDmBotFallback] = useState(DM_BOT_FALLBACK_DEFAULT_PT);
+  const [dmBotFallback, setDmBotFallback] = useState('');
   const [webhookCheck, setWebhookCheck] = useState<{
     loading: boolean;
     ok?: boolean;
@@ -89,7 +86,7 @@ export const NovaAutomacaoModal: FC<Props> = ({ open, onClose, onCreated }) => {
       setActiveTrigger('comment_on_post');
       setWebhookCheck({ loading: false });
       setDmBotEnabled(true);
-      setDmBotFallback(DM_BOT_FALLBACK_DEFAULT_PT);
+      setDmBotFallback('');
     }
   }, [open]);
 
@@ -355,7 +352,7 @@ export const NovaAutomacaoModal: FC<Props> = ({ open, onClose, onCreated }) => {
                     rows={3}
                     placeholder={t(
                       'dm_bot_fallback_placeholder',
-                      DM_BOT_FALLBACK_DEFAULT_PT
+                      'Um momento! Vou te transferir para um atendente humano que vai continuar essa conversa.'
                     )}
                     className="w-full bg-newBgColorInner border border-newTableBorder rounded-[8px] text-[13px] text-textColor px-[14px] py-[10px] outline-none resize-none"
                   />

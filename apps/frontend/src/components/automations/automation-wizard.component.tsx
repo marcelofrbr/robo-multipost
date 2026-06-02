@@ -38,17 +38,33 @@ const RadioDot: FC<{ active: boolean }> = ({ active }) => (
   </div>
 );
 
-function formatRelative(dateStr: string): string {
+function formatRelative(
+  dateStr: string,
+  t: ReturnType<typeof useT>
+): string {
   try {
     const diff = Date.now() - new Date(dateStr).getTime();
     const days = Math.floor(diff / 86400000);
-    if (days < 1) return 'hoje';
-    if (days < 7) return `${days}d atrás`;
+    if (days < 1) return t('wizard_relative_today', 'hoje');
+    if (days < 7)
+      return t('wizard_relative_days_ago', '{{n}}d atrás').replace(
+        '{{n}}',
+        String(days)
+      );
     const weeks = Math.floor(days / 7);
-    if (weeks < 5) return `${weeks} semana${weeks > 1 ? 's' : ''} atrás`;
+    if (weeks < 5)
+      return t('wizard_relative_weeks_ago', '{{n}} semana(s) atrás').replace(
+        '{{n}}',
+        String(weeks)
+      );
     const months = Math.floor(days / 30);
-    return `${months} mês${months > 1 ? 'es' : ''} atrás`;
-  } catch { return ''; }
+    return t('wizard_relative_months_ago', '{{n}} mes(es) atrás').replace(
+      '{{n}}',
+      String(months)
+    );
+  } catch {
+    return '';
+  }
 }
 
 export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) => {
@@ -955,7 +971,7 @@ export const AutomationWizardComponent: FC<Props> = ({ flowId, initialFlow }) =>
                         <p className="text-[11px] text-textColor truncate">{post.caption || '—'}</p>
                         {post.timestamp && (
                           <p className="text-[10px] text-customColor18 mt-[2px]">
-                            {formatRelative(post.timestamp)}
+                            {formatRelative(post.timestamp, t)}
                           </p>
                         )}
                       </div>

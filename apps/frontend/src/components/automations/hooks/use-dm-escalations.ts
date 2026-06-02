@@ -55,6 +55,12 @@ export const createDmEscalationActions = (
       method: 'POST',
     });
     const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(
+        (data as { message?: string })?.message ||
+          'Falha ao resolver a conversa'
+      );
+    }
     await mutators.mutateEscalations?.();
     return data;
   };

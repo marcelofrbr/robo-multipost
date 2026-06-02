@@ -45,6 +45,17 @@ const useFlowPosts = (flowId: string, enabled: boolean) => {
   );
 };
 
+const useFlowSummary = (flowId: string, enabled: boolean) => {
+  const fetch = useFetch();
+  return useSWR<{ integrationId: string }>(
+    flowId && enabled ? `/flows/${flowId}` : null,
+    async (url: string) => {
+      const res = await fetch(url);
+      return res.json();
+    }
+  );
+};
+
 const EXAMPLE_CHIPS = ['Preço', 'Link', 'Comprar'];
 
 const KeywordsField: FC<{
@@ -149,10 +160,9 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
     node.type === 'trigger'
   );
 
-  const fetchApi = useFetch();
-  const { data: flowSummary } = useSWR<{ integrationId: string }>(
-    flowId && node.type === 'trigger' ? `/flows/${flowId}` : null,
-    (path: string) => fetchApi(path).then((r) => r.json())
+  const { data: flowSummary } = useFlowSummary(
+    flowId,
+    node.type === 'trigger'
   );
 
   const selectedPostIds: string[] = config.postIds || [];
