@@ -169,6 +169,61 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
   const renderFields = () => {
     switch (node.type) {
       case 'trigger': {
+        // Atendimento por DM: o flow e criado/editado pelo modal Nova Automacao.
+        // No canvas expomos os campos do bot (enabled + fallbackMessage) para
+        // paridade, sem quebrar ao abrir esse tipo de flow.
+        if (config.triggerType === 'direct_message') {
+          return (
+            <>
+              <label className="block text-[13px] font-semibold text-textColor mb-[8px]">
+                {t('trigger_node_label_dm', 'Gatilho: Atendimento por DM')}
+              </label>
+              <p className="text-[12px] text-customColor18 mb-[16px]">
+                {t(
+                  'dm_bot_modal_intro',
+                  'Ative um bot que responde automaticamente as mensagens diretas da conta selecionada e transfere para um humano quando necessario.'
+                )}
+              </p>
+
+              <label className="flex items-center justify-between gap-[8px] p-[8px] rounded-[6px] border border-newTableBorder mb-[16px]">
+                <span className="text-[12px] text-textColor">
+                  {t('dm_bot_enable', 'Ativar bot de atendimento por DM')}
+                </span>
+                <input
+                  type="checkbox"
+                  checked={config.enabled !== false}
+                  onChange={(e) =>
+                    setConfig({ ...config, enabled: e.target.checked })
+                  }
+                />
+              </label>
+
+              <label className="block text-[12px] text-textColor mb-[6px]">
+                {t(
+                  'dm_bot_fallback_label',
+                  'Mensagem de fallback (quando escalar para humano)'
+                )}
+              </label>
+              <div className={inputWrapperClass}>
+                <textarea
+                  className={`${inputClass} min-h-[80px] resize-y`}
+                  rows={3}
+                  value={config.fallbackMessage || ''}
+                  onChange={(e) =>
+                    setConfig({ ...config, fallbackMessage: e.target.value })
+                  }
+                />
+              </div>
+              <p className="text-[11px] text-customColor18 mt-[6px]">
+                {t(
+                  'dm_bot_fallback_hint',
+                  'Enviada ao usuario quando o bot transferir a conversa para um atendente humano.'
+                )}
+              </p>
+            </>
+          );
+        }
+
         const triggerType: 'comment_on_post' | 'story_reply' =
           config.triggerType === 'story_reply'
             ? 'story_reply'
@@ -797,6 +852,40 @@ export const NodeConfigPanel: FC<NodeConfigPanelProps> = ({
                   )}
                 </p>
               </div>
+            </div>
+
+            {/* Handoff: entregar a conversa pro bot de DM (paridade com o wizard). */}
+            <div className="mt-[16px] pt-[12px] border-t border-fifth flex items-center justify-between gap-[12px] p-[12px] rounded-[8px] bg-sixth border border-fifth">
+              <div>
+                <div className="text-[13px] text-textColor">
+                  {t(
+                    'wizard_handoff_to_bot',
+                    'Entregar a conversa pro bot de DM (handoff)'
+                  )}
+                </div>
+                <div className="text-[11px] text-customColor18 mt-[2px]">
+                  {t(
+                    'wizard_handoff_to_bot_hint',
+                    'Quando a pessoa responder a DM, o bot de atendimento assume a conversa.'
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-pressed={!!config.handoffToBot}
+                onClick={() =>
+                  setConfig({ ...config, handoffToBot: !config.handoffToBot })
+                }
+                className={`relative w-[44px] h-[24px] rounded-full transition-colors flex-shrink-0 ${
+                  config.handoffToBot ? 'bg-btnPrimary' : 'bg-customColor18/30'
+                }`}
+              >
+                <div
+                  className={`absolute top-[2px] w-[20px] h-[20px] rounded-full bg-white transition-all ${
+                    config.handoffToBot ? 'left-[22px]' : 'left-[2px]'
+                  }`}
+                />
+              </button>
             </div>
           </>
         );

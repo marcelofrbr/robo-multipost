@@ -13,6 +13,7 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
   const buttonText: string = config.buttonText || '';
   const buttonUrl: string = config.buttonUrl || '';
   const hasButton = !!buttonText && !!buttonUrl;
+  const handoffToBot = !!config.handoffToBot;
 
   return (
     <div
@@ -47,6 +48,11 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
           title={buttonUrl}
         >
           🔗 {buttonText}
+        </span>
+      )}
+      {handoffToBot && (
+        <span className="block mt-[6px] text-[10px] px-[6px] py-[2px] rounded-[10px] border border-purple-400/40 bg-purple-500/10 text-purple-200 max-w-[180px] truncate w-fit">
+          🤖 {t('send_dm_node_handoff_badge', 'Handoff pro bot de DM')}
         </span>
       )}
       <Handle type="source" position={Position.Bottom} className="!bg-purple-400" />
