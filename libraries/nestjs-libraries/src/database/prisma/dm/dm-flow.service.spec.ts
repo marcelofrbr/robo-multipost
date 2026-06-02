@@ -136,6 +136,7 @@ describe('DmFlowService', () => {
       dmRepository.upsertConversation.mockResolvedValue({
         id: 'conv-1',
         status: 'BOT_ACTIVE',
+        botReplyCount: 0,
       } as any);
 
       // ACT
@@ -188,6 +189,7 @@ describe('DmFlowService', () => {
       dmRepository.upsertConversation.mockResolvedValue({
         id: 'conv-1',
         status: 'BOT_ACTIVE',
+        botReplyCount: 0,
       } as any);
       rateLimit.allow.mockResolvedValue(false);
 
@@ -205,6 +207,57 @@ describe('DmFlowService', () => {
       expect(workflowStart).not.toHaveBeenCalled();
     });
 
+    it('deve marcar handoff e NAO enfileirar quando a conversa atingiu o cap de respostas', async () => {
+      // ARRANGE
+      flowsRepository.getActiveFlowsForIntegration.mockResolvedValue([
+        dmFlow,
+      ] as any);
+      dmRepository.findByMetaMid.mockResolvedValue(null as any);
+      dmRepository.upsertConversation.mockResolvedValue({
+        id: 'conv-1',
+        status: 'BOT_ACTIVE',
+        botReplyCount: 50,
+      } as any);
+
+      // ACT
+      await service.handleIncomingDirectMessage(basePayload);
+
+      // ASSERT
+      expect(dmRepository.appendMessage).toHaveBeenCalledWith(
+        'conv-1',
+        'user',
+        basePayload.messageText,
+        basePayload.igMessageId
+      );
+      expect(dmRepository.markHandoff).toHaveBeenCalledWith(
+        'conv-1',
+        'limite de respostas automaticas atingido'
+      );
+      expect(rateLimit.allow).not.toHaveBeenCalled();
+      expect(workflowStart).not.toHaveBeenCalled();
+    });
+
+    it('nao deve remarcar handoff quando ja em HUMAN_HANDOFF mesmo acima do cap', async () => {
+      // ARRANGE
+      flowsRepository.getActiveFlowsForIntegration.mockResolvedValue([
+        dmFlow,
+      ] as any);
+      dmRepository.findByMetaMid.mockResolvedValue(null as any);
+      dmRepository.upsertConversation.mockResolvedValue({
+        id: 'conv-1',
+        status: 'HUMAN_HANDOFF',
+        botReplyCount: 80,
+      } as any);
+
+      // ACT
+      await service.handleIncomingDirectMessage(basePayload);
+
+      // ASSERT
+      // O branch HUMAN_HANDOFF ja retorna antes do check de cap.
+      expect(dmRepository.markHandoff).not.toHaveBeenCalled();
+      expect(workflowStart).not.toHaveBeenCalled();
+    });
+
     it('deve reativar e enfileirar quando a conversa estava CLOSED', async () => {
       // ARRANGE
       flowsRepository.getActiveFlowsForIntegration.mockResolvedValue([
@@ -214,6 +267,7 @@ describe('DmFlowService', () => {
       dmRepository.upsertConversation.mockResolvedValue({
         id: 'conv-1',
         status: 'CLOSED',
+        botReplyCount: 0,
       } as any);
 
       // ACT

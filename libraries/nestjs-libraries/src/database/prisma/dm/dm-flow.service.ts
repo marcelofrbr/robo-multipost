@@ -20,6 +20,16 @@ interface IncomingDirectMessagePayload {
 export class DmFlowService {
   private readonly _logger = new Logger(DmFlowService.name);
 
+  // Teto de respostas automaticas por conversa. Quando atingido, a conversa
+  // virou longa demais e deve ir para um humano em vez de o bot continuar
+  // respondendo. Configuravel via DM_BOT_MAX_REPLIES_PER_CONVERSATION (default 50).
+  private static maxRepliesPerConversation(): number {
+    return (
+      parseInt(process.env.DM_BOT_MAX_REPLIES_PER_CONVERSATION || '50', 10) ||
+      50
+    );
+  }
+
   constructor(
     private _flowsRepository: FlowsRepository,
     private _dmRepository: DmRepository,
@@ -85,6 +95,24 @@ export class DmFlowService {
       this._logger.log(
         `DM reativada (conversa ${conversation.id} estava CLOSED), bot enfileirado`
       );
+    }
+
+    // 4.1.1) Teto de respostas automaticas por conversa. Se a conversa ja
+    //        atingiu o cap (DM_BOT_MAX_REPLIES_PER_CONVERSATION), ela virou
+    //        longa demais: escala para humano e NAO enfileira o bot. A proxima
+    //        mensagem cai no branch HUMAN_HANDOFF acima. O inbound ja foi
+    //        registrado. Conversas ja em HUMAN_HANDOFF retornaram acima, entao
+    //        aqui sempre marcamos o handoff.
+    const cap = DmFlowService.maxRepliesPerConversation();
+    if ((conversation.botReplyCount ?? 0) >= cap) {
+      await this._dmRepository.markHandoff(
+        conversation.id,
+        'limite de respostas automaticas atingido'
+      );
+      this._logger.warn(
+        `DM atingiu o teto de ${cap} respostas automaticas (conversa ${conversation.id}) escalada para humano, bot nao enfileirado`
+      );
+      return;
     }
 
     // 4.2) Rate limit por (integracao, remetente), aplicado UMA UNICA VEZ no
