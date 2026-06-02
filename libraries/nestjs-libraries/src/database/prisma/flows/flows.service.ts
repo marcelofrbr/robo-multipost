@@ -522,6 +522,7 @@ export class FlowsService {
       const dmData: Record<string, any> = { message: body.dmMessage };
       if (body.dmButtonText) dmData.buttonText = body.dmButtonText;
       if (body.dmButtonUrl) dmData.buttonUrl = body.dmButtonUrl;
+      if (body.handoffToBot) dmData.handoffToBot = true;
       nodes.push({ type: 'SEND_DM', positionX: 250, positionY: 50 + nodes.length * 150, data: JSON.stringify(dmData) });
       edges.push({ sourceIndex: lastIndex, targetIndex: nodes.length - 1 });
     }
@@ -610,6 +611,7 @@ export class FlowsService {
       const dmData: Record<string, any> = { message: body.dmMessage };
       if (body.dmButtonText) dmData.buttonText = body.dmButtonText;
       if (body.dmButtonUrl) dmData.buttonUrl = body.dmButtonUrl;
+      if (body.handoffToBot) dmData.handoffToBot = true;
       nodes.push({
         type: 'SEND_DM',
         positionX: 250,
@@ -646,6 +648,104 @@ export class FlowsService {
     await this._flowsRepository.updateFlowStatus(orgId, flow.id, FlowStatus.ACTIVE, profileId);
 
     return this._flowsRepository.getFlow(orgId, flow.id, profileId);
+  }
+
+  /**
+   * Cria ou atualiza o Flow do bot de atendimento por DM (trigger
+   * 'direct_message') de uma integration Instagram. Diferente de
+   * quickCreateFlow, NAO chama checkIntegrationWebhook/Graph API: o bot de DM
+   * nao depende daquela subscription especifica e precisa funcionar tambem
+   * com contas instagram-standalone. Valida apenas o provider.
+   *
+   * Se ja existir um Flow com trigger 'direct_message' para a integration
+   * (mesmo PAUSED), reaproveita: atualiza status e fallbackMessage. Caso
+   * contrario, cria um novo Flow "Atendimento por DM" com um unico node
+   * TRIGGER.
+   */
+  async createOrUpdateDirectMessageBotFlow(
+    orgId: string,
+    integrationId: string,
+    opts: { enabled: boolean; fallbackMessage?: string },
+    profileId?: string
+  ): Promise<{ flowId: string; status: FlowStatus }> {
+    const integration = await this._integrationService.getIntegrationById(
+      orgId,
+      integrationId
+    );
+    if (!integration) {
+      throw new BadRequestException('Integracao nao encontrada');
+    }
+    if (
+      integration.providerIdentifier !== 'instagram' &&
+      integration.providerIdentifier !== 'instagram-standalone'
+    ) {
+      throw new BadRequestException(
+        'Apenas contas do Instagram suportam o bot de DM'
+      );
+    }
+
+    const targetStatus = opts.enabled ? FlowStatus.ACTIVE : FlowStatus.PAUSED;
+
+    const triggerData = JSON.stringify({
+      triggerType: 'direct_message',
+      fallbackMessage: opts.fallbackMessage,
+    });
+
+    const existingFlows =
+      await this._flowsRepository.getFlowsForIntegration(integrationId);
+    const existing = existingFlows.find((flow) =>
+      this.isDirectMessageFlow(flow)
+    );
+
+    let flowId: string;
+    if (existing) {
+      flowId = existing.id;
+    } else {
+      const created = await this._flowsRepository.createFlow(
+        orgId,
+        { name: 'Atendimento por DM', integrationId },
+        profileId
+      );
+      flowId = created.id;
+    }
+
+    const flowNodes = [
+      {
+        id: 'temp-0',
+        type: 'TRIGGER' as any,
+        label: 'direct_message',
+        positionX: 250,
+        positionY: 50,
+        data: triggerData,
+      },
+    ];
+
+    await this._flowsRepository.saveCanvas(orgId, flowId, flowNodes, [], profileId);
+
+    const updated = await this._flowsRepository.updateFlowStatus(
+      orgId,
+      flowId,
+      targetStatus,
+      profileId
+    );
+
+    return { flowId, status: updated.status };
+  }
+
+  private isDirectMessageFlow(flow: {
+    nodes?: Array<{ type: string; label?: string | null; data: string | null }>;
+  }): boolean {
+    const trigger = flow.nodes?.find((n) => n.type === 'TRIGGER');
+    if (!trigger) return false;
+    if (trigger.label === 'direct_message') return true;
+    if (trigger.data) {
+      try {
+        return JSON.parse(trigger.data)?.triggerType === 'direct_message';
+      } catch {
+        // ignora data malformada
+      }
+    }
+    return false;
   }
 
   private buildTriggerConfig(body: QuickCreateFlowDto): Record<string, any> {
@@ -865,8 +965,8 @@ export class FlowsService {
     }
   }
 
-  getExecution(id: string) {
-    return this._flowsRepository.getExecution(id);
+  getExecution(orgId: string, id: string) {
+    return this._flowsRepository.getExecution(orgId, id);
   }
 
   appendExecutionLog(
@@ -876,8 +976,8 @@ export class FlowsService {
     return this._flowsRepository.appendExecutionLog(id, entry);
   }
 
-  getExecutions(flowId: string, page?: number, limit?: number) {
-    return this._flowsRepository.getExecutions(flowId, page, limit);
+  getExecutions(orgId: string, flowId: string, page?: number, limit?: number) {
+    return this._flowsRepository.getExecutions(orgId, flowId, page, limit);
   }
 
   updateExecution(

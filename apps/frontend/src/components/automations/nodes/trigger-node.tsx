@@ -9,8 +9,12 @@ export const TriggerNode: FC<NodeProps> = memo(({ data, selected }) => {
   const config = typeof data?.config === 'string'
     ? (() => { try { return JSON.parse(data.config as string); } catch { return {}; } })()
     : (data?.config || {});
-  const triggerType: 'comment_on_post' | 'story_reply' =
-    config.triggerType === 'story_reply' ? 'story_reply' : 'comment_on_post';
+  const triggerType: 'comment_on_post' | 'story_reply' | 'direct_message' =
+    config.triggerType === 'story_reply'
+      ? 'story_reply'
+      : config.triggerType === 'direct_message'
+      ? 'direct_message'
+      : 'comment_on_post';
   const mode: 'all' | 'specific' | 'next_publication' =
     config.mode === 'next_publication'
       ? 'next_publication'
@@ -24,11 +28,18 @@ export const TriggerNode: FC<NodeProps> = memo(({ data, selected }) => {
   const keywords: string[] = Array.isArray(config.keywords) ? config.keywords : [];
 
   const title =
-    triggerType === 'story_reply'
+    triggerType === 'direct_message'
+      ? t('trigger_node_label_dm', 'Gatilho: Atendimento por DM')
+      : triggerType === 'story_reply'
       ? t('trigger_node_label_story', 'Gatilho: Resposta ao story')
       : t('trigger_node_label', 'Gatilho: Comentario no Instagram');
   const description =
-    triggerType === 'story_reply'
+    triggerType === 'direct_message'
+      ? t(
+          'trigger_node_description_dm',
+          'Quando alguem enviar uma mensagem direta para a conta'
+        )
+      : triggerType === 'story_reply'
       ? t(
           'trigger_node_description_story',
           'Quando alguem responder ou reagir ao seu story'
@@ -84,18 +95,34 @@ export const TriggerNode: FC<NodeProps> = memo(({ data, selected }) => {
         </span>
       </div>
       <p className="text-[12px] text-customColor18">{description}</p>
-      <p className="text-[11px] mt-[4px] text-textColor opacity-80">{modeLabel}</p>
-      {keywords.length > 0 && (
-        <p className="text-[11px] mt-[2px] truncate max-w-[180px] text-textColor opacity-70">
-          {t('trigger_keywords_label', 'Palavras-chave')}: {keywords.join(', ')}
-        </p>
-      )}
-      {config.requireFollow && (
+      {triggerType === 'direct_message' ? (
         <span
-          className="inline-block mt-[6px] text-[10px] px-[6px] py-[2px] rounded-[10px] border border-yellow-500/40 bg-yellow-500/10 text-yellow-200"
+          className={`inline-block mt-[6px] text-[10px] px-[6px] py-[2px] rounded-[10px] border ${
+            config.enabled === false
+              ? 'border-customColor18/40 bg-customColor18/10 text-customColor18'
+              : 'border-green-500/40 bg-green-500/10 text-green-200'
+          }`}
         >
-          ⚠️ {t('trigger_node_follow_gate_badge', 'Pede para seguir')}
+          {config.enabled === false
+            ? t('trigger_node_dm_disabled', 'Bot pausado')
+            : t('trigger_node_dm_enabled', 'Bot ativo')}
         </span>
+      ) : (
+        <>
+          <p className="text-[11px] mt-[4px] text-textColor opacity-80">
+            {modeLabel}
+          </p>
+          {keywords.length > 0 && (
+            <p className="text-[11px] mt-[2px] truncate max-w-[180px] text-textColor opacity-70">
+              {t('trigger_keywords_label', 'Palavras-chave')}: {keywords.join(', ')}
+            </p>
+          )}
+          {config.requireFollow && (
+            <span className="inline-block mt-[6px] text-[10px] px-[6px] py-[2px] rounded-[10px] border border-yellow-500/40 bg-yellow-500/10 text-yellow-200">
+              ⚠️ {t('trigger_node_follow_gate_badge', 'Pede para seguir')}
+            </span>
+          )}
+        </>
       )}
       <Handle type="source" position={Position.Bottom} className="!bg-green-400" />
     </div>

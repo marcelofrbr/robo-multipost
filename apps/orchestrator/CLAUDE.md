@@ -68,11 +68,12 @@ Local wrapper: `FlowActivity.resolveIgRoute(integration)` in `src/activities/flo
 | `src/workflows/flow.execution.workflow.ts` | Flow engine (Instagram automations) — step 1 of follow-gate |
 | `src/workflows/follow-gate-resolve.workflow.ts` | Step 2 of follow-gate (resolves postback) |
 | `src/workflows/enrich-unmatched-comment.workflow.ts` | Fire-and-forget enrichment of `UnmatchedComment` with IG media metadata (thumbnail, caption, `isAd` badge); no signal, no PendingPostback |
+| `src/workflows/dm-bot-reply.workflow.ts` | Resposta automatica de DM via bot: chama `generateDmReply`, `sendDmReply`, `escalateDmToHuman` e `seedDmHandoff` |
 | `src/workflows/refresh.token.workflow.ts` | Periodic OAuth token refresh |
 | `src/workflows/repost.workflow.ts` | Scheduled repost |
 | `src/workflows/missing.post.workflow.ts` | Failed-post detector + retry |
 | `src/workflows/digest.email.workflow.ts` / `send.email.workflow.ts` / `streak.workflow.ts` | Email digests, direct sends, streaks |
-| `src/activities/flow.activity.ts` | Flow activities (comment, DM, follow check) — `resolveIgRoute` wrapper |
+| `src/activities/flow.activity.ts` | Flow activities (comment, DM, follow check) — `resolveIgRoute` wrapper; inclui activities de DM: `generateDmReply`, `sendDmReply`, `escalateDmToHuman`, `seedDmHandoff` |
 | `src/activities/post.activity.ts` | Real publishing activity (calls `IntegrationManager`) |
 | `src/activities/integrations.activity.ts` | Integration activities (refresh token, etc.) |
 | `src/signals/` | Workflow signal definitions |

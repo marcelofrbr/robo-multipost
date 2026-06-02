@@ -12,6 +12,7 @@ const {
   appendExecutionLog,
   createPendingPostback,
   sendOpeningDmWithPostback,
+  seedDmHandoff,
 } = proxyActivities<FlowActivity>({
   startToCloseTimeout: '5 minute',
   taskQueue: 'main',
@@ -139,6 +140,24 @@ export async function flowExecutionWorkflow(input: FlowExecutionInput) {
           ctx.dmButtonText,
           ctx.dmButtonUrl
         );
+
+        // Handoff comment -> bot de DM: apos o DM inicial sair com sucesso,
+        // se o node SEND_DM tiver handoffToBot=true, semeia uma conversa de DM
+        // (BOT_ACTIVE, source='comment_handoff') para a Feature 5 assumir
+        // quando a pessoa responder no Direct.
+        const dmNode = flow.nodes.find((n: any) => n.type === 'SEND_DM');
+        const dmCfg = dmNode ? safeParseJson(dmNode.data) : {};
+        const igAccountId = flow.integration?.internalId;
+        if (dmCfg.handoffToBot && igAccountId) {
+          await seedDmHandoff({
+            integrationId,
+            organizationId: flow.organizationId,
+            profileId: flow.profileId || undefined,
+            igAccountId,
+            igSenderId: input.igCommenterId,
+            igSenderName: input.igCommenterName,
+          });
+        }
       }
     }
 

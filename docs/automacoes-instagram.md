@@ -416,3 +416,67 @@ Os scopes sao selecionados no momento da geracao do token — revise o checklist
 - **"O app nao tem acesso avancado a permissao instagram_manage_messages"** → token foi gerado sem a scope de messaging, ou o app Meta ainda esta em Dev Mode. Regerar o token com a scope correta e confirmar que o app esta em Live Mode.
 - **"Token expirado"** → IG User Token nao usado por > 60 dias. Gerar novo no Meta Dashboard e re-adicionar na tela de credenciais.
 - **"Destinatario nao tem funcao no app"** → app ainda em Dev Mode. Mover para Live Mode ou adicionar o usuario como Instagram Tester temporariamente.
+
+---
+
+## Atendimento por DM com IA
+
+Além de responder comentários, o Robô MultiPost pode **responder mensagens diretas (DM)** do Instagram automaticamente, usando IA. O bot usa a base de conhecimento e a persona do perfil para responder, e quando não sabe a resposta com segurança ele **escala para um humano** (nunca inventa). Esse atendimento por DM é um gatilho separado, chamado **"direct_message"**.
+
+### (a) Pré-requisitos de credenciais Meta
+
+Para o bot **enviar** DM, o app Meta precisa de um token de messaging e o webhook precisa receber mensagens. Você precisa de **um** destes caminhos de token (qualquer um serve):
+
+1. **Instagram (Standalone)** com IG User Token. Conecte o canal em **Canais** escolhendo **Instagram (Standalone)**. O próprio token da conexão já serve para enviar DM. É o caminho recomendado para alunos/self-hosted.
+2. **Meta System User Token**. Um token permanente do Business Manager que cobre todas as contas. Cadastre em **Configurações > Credenciais > Instagram > Tokens de Messaging > Meta System User Token**.
+3. **IG User Token por conta**. Um token de 60 dias por conta, cadastrado em **Configurações > Credenciais > Instagram > Tokens por conta Instagram**.
+
+> O passo a passo detalhado de como gerar cada token está na seção **"Configuração de Messaging Tokens"** mais acima neste guia (a mesma usada pela DM de story).
+
+Além do token, o **webhook precisa assinar o campo `messages`** (não só `comments`). Se você usou o botão **"Configurar webhook Instagram na Meta"** (Passo 3), o campo `messages` já é incluído automaticamente. Se configurou na mão no Meta Developer Portal, garanta que **Subscribed Fields** tem `comments` **e** `messages`.
+
+Scopes necessários no token de messaging: `instagram_manage_messages` (legado) **ou** `instagram_business_manage_messages` (nova).
+
+### (b) Como ligar o bot por perfil
+
+1. Acesse **Automações** no menu lateral.
+2. Clique em **Nova Automação** e escolha **Atendimento por DM (IA)** na lista de gatilhos.
+3. Selecione a **conta Instagram** e:
+   - **Ativar atendimento por DM**: liga o bot para este perfil.
+   - **Mensagem de fallback**: o texto enviado quando a conversa é escalada para um humano (ex.: "Já chamei alguém do nosso time para te atender, aguarde um instante.").
+4. Salve. O bot fica **ligado** enquanto essa automação estiver com status **Ativo**. Para desligar temporariamente, **pause** a automação (a configuração é preservada e você religa quando quiser). O bot só responde com a automação **Ativa**.
+
+> O liga/desliga é **por perfil**: cada conta Instagram tem o seu. O perfil é resolvido pelo seletor de perfil no topo da tela.
+
+### (c) Como funciona a escalação e onde ver
+
+O bot **nunca inventa** resposta. Ele escala para atendimento humano quando:
+
+- A IA do perfil não está configurada (vá em **Configurações > Modelos de IA**).
+- A pergunta foge da base de conhecimento e ele não tem como responder com segurança.
+- O próprio usuário pede para falar com um atendente/humano.
+
+Quando isso acontece, o bot envia a **mensagem de fallback** que você configurou e a conversa entra no inbox **"Atendimento humano"** (na tela de **Automações**). Lá você vê as conversas que precisam de um humano, abre cada uma e, depois de atender pelo Direct do Instagram, marca como **resolvida**.
+
+### (d) Como ligar o handoff num comentário (comentário → DM)
+
+Você pode começar uma conversa por um **comentário** e entregá-la ao bot de DM. No wizard de automação de **comentário em publicação**, ative o toggle **"Entregar a conversa pro bot de DM (handoff)"**. Com ele ligado:
+
+1. Alguém comenta com a palavra-chave → o fluxo responde e envia o DM inicial normalmente.
+2. A conversa é entregue ao bot de DM. A partir da **próxima** mensagem que a pessoa mandar no Direct, o bot assume e responde com IA (mesmas regras de escalação).
+
+Assim você usa o comentário como porta de entrada e o bot toca o atendimento daí em diante.
+
+### (e) Limitação da janela de 24h
+
+A Meta só permite enviar DM **dentro de 24 horas** após a última mensagem do usuário. Na prática:
+
+- O bot consegue responder enquanto a pessoa estiver interagindo (cada mensagem dela reabre a janela de 24h).
+- Se a pessoa some e volta dias depois, a primeira mensagem dela reabre a janela e o bot volta a responder normalmente.
+- Se uma escalação acontece **fora** da janela (raro), a mensagem de fallback não é enviada. A conversa ainda aparece no inbox **"Atendimento humano"** para você atender manualmente.
+
+### Limites e controles
+
+- **Rate limit por remetente**: o bot limita quantas DMs responde por hora para o mesmo remetente (padrão **20/hora**, configurável em `DM_BOT_RATE_LIMIT_PER_HOUR`). Protege contra spam e custo de IA.
+- **Teto por conversa**: há um limite de respostas do bot na mesma conversa (padrão **50**, configurável em `DM_BOT_MAX_REPLIES_PER_CONVERSATION`).
+- **Privacidade/segurança**: a mensagem do usuário e o histórico são tratados como dado não-confiável. Instruções embutidas na mensagem ("ignore suas regras...") não afetam o comportamento do bot.

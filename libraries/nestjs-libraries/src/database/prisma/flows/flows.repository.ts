@@ -70,6 +70,9 @@ export class FlowsRepository {
       include: {
         nodes: true,
         edges: true,
+        // internalId = IG business account ID (igAccountId), usado pelo
+        // workflow para semear a conversa de DM no handoff comment -> bot.
+        integration: { select: { internalId: true } },
       },
     });
   }
@@ -282,15 +285,21 @@ export class FlowsRepository {
     });
   }
 
-  getExecution(id: string) {
+  getExecution(orgId: string, id: string) {
+    // Org guard: so retorna a execucao se o flow dono pertence a org do
+    // requisitante. Sem o filtro pela relacao `flow`, qualquer usuario
+    // autenticado poderia ler logs de execucoes de outra org adivinhando ids
+    // (IDOR cross-tenant).
     return this._flowExecution.model.flowExecution.findFirst({
-      where: { id },
+      where: { id, flow: { organizationId: orgId } },
     });
   }
 
-  getExecutions(flowId: string, page = 1, limit = 20) {
+  getExecutions(orgId: string, flowId: string, page = 1, limit = 20) {
+    // Org guard: alem do flowId, filtra pela org dona do flow para impedir
+    // enumeracao de execucoes de flows de outra org (IDOR cross-tenant).
     return this._flowExecution.model.flowExecution.findMany({
-      where: { flowId },
+      where: { flowId, flow: { organizationId: orgId } },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
@@ -337,6 +346,22 @@ export class FlowsRepository {
       include: {
         nodes: true,
         edges: true,
+      },
+    });
+  }
+
+  getFlowsForIntegration(integrationId: string) {
+    // Retorna todos os flows nao deletados da integration (qualquer status,
+    // incluindo PAUSED), com nodes, para o caller filtrar em memoria pelo
+    // tipo de gatilho. Usado pelo bot de DM para encontrar um flow
+    // 'direct_message' existente (que pode estar PAUSED) e reativa-lo.
+    return this._flow.model.flow.findMany({
+      where: {
+        integrationId,
+        deletedAt: null,
+      },
+      include: {
+        nodes: true,
       },
     });
   }

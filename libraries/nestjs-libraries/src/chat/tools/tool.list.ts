@@ -9,6 +9,17 @@ import { IntegrationListTool } from '@gitroom/nestjs-libraries/chat/tools/integr
 import { KnowledgeQueryTool } from '@gitroom/nestjs-libraries/chat/tools/knowledge.query.tool';
 import { WebSearchTool } from '@gitroom/nestjs-libraries/chat/tools/web-search.tool';
 import { ExtractUrlsTool } from '@gitroom/nestjs-libraries/chat/tools/extract-urls.tool';
+import { UploadMediaFromUrlTool } from '@gitroom/nestjs-libraries/chat/tools/upload.media.from.url.tool';
+import { MediaListTool } from '@gitroom/nestjs-libraries/chat/tools/media.list.tool';
+import { MediaCleanupTool } from '@gitroom/nestjs-libraries/chat/tools/media.cleanup.tool';
+import {
+  ListAutomationsTool,
+  ListInstagramPostsForAutomationTool,
+  CreateCommentAutomationTool,
+  SetAutomationStatusTool,
+} from '@gitroom/nestjs-libraries/chat/tools/automations.tool';
+import { DmBotConfigTool } from '@gitroom/nestjs-libraries/chat/tools/dm-bot.config.tool';
+import { DmEscalationsListTool } from '@gitroom/nestjs-libraries/chat/tools/dm-escalations.list.tool';
 
 export const toolList = [
   IntegrationListTool,
@@ -22,4 +33,13 @@ export const toolList = [
   KnowledgeQueryTool,
   WebSearchTool,
   ExtractUrlsTool,
+  UploadMediaFromUrlTool,
+  MediaListTool,
+  MediaCleanupTool,
+  ListAutomationsTool,
+  ListInstagramPostsForAutomationTool,
+  CreateCommentAutomationTool,
+  SetAutomationStatusTool,
+  DmBotConfigTool,
+  DmEscalationsListTool,
 ];

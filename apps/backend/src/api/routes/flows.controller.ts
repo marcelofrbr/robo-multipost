@@ -14,12 +14,14 @@ import { Organization, Profile } from '@prisma/client';
 import { ApiTags } from '@nestjs/swagger';
 import { FlowsService } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.service';
 import { CredentialService } from '@gitroom/nestjs-libraries/database/prisma/credentials/credential.service';
+import { DmFlowService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-flow.service';
 import {
   CreateFlowDto,
   UpdateFlowDto,
   UpdateFlowStatusDto,
   SaveCanvasDto,
   QuickCreateFlowDto,
+  DmBotConfigDto,
 } from '@gitroom/nestjs-libraries/dtos/flows/flow.dto';
 
 @ApiTags('Flows')
@@ -27,7 +29,8 @@ import {
 export class FlowsController {
   constructor(
     private _flowsService: FlowsService,
-    private _credentialService: CredentialService
+    private _credentialService: CredentialService,
+    private _dmFlowService: DmFlowService
   ) {}
 
   @Get('/webhook-config')
@@ -66,6 +69,36 @@ export class FlowsController {
     @GetProfileFromRequest() profile: Profile | null
   ) {
     return this._flowsService.getFlows(org.id, profile?.id);
+  }
+
+  @Get('/dm/escalations')
+  async getDmEscalations(
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null
+  ) {
+    return this._dmFlowService.listEscalations(org.id, profile?.id);
+  }
+
+  @Post('/dm/escalations/:id/resolve')
+  async resolveDmEscalation(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    return this._dmFlowService.resolveConversation(org.id, id);
+  }
+
+  @Post('/dm/bot')
+  async createOrUpdateDmBot(
+    @GetOrgFromRequest() org: Organization,
+    @GetProfileFromRequest() profile: Profile | null,
+    @Body() body: DmBotConfigDto
+  ) {
+    return this._flowsService.createOrUpdateDirectMessageBotFlow(
+      org.id,
+      body.integrationId,
+      { enabled: body.enabled, fallbackMessage: body.fallbackMessage },
+      profile?.id
+    );
   }
 
   @Post('/')
@@ -194,11 +227,13 @@ export class FlowsController {
 
   @Get('/:id/executions')
   async getExecutions(
+    @GetOrgFromRequest() org: Organization,
     @Param('id') id: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string
   ) {
     return this._flowsService.getExecutions(
+      org.id,
       id,
       page ? parseInt(page, 10) : undefined,
       limit ? parseInt(limit, 10) : undefined
@@ -206,7 +241,10 @@ export class FlowsController {
   }
 
   @Get('/:id/executions/:executionId')
-  async getExecution(@Param('executionId') executionId: string) {
-    return this._flowsService.getExecution(executionId);
+  async getExecution(
+    @GetOrgFromRequest() org: Organization,
+    @Param('executionId') executionId: string
+  ) {
+    return this._flowsService.getExecution(org.id, executionId);
   }
 }
