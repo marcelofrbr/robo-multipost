@@ -4,8 +4,9 @@
 ainda não foi validado, o que você pode reusar e o que **não** pode ser
 quebrado.
 
-Leia até a seção 2 antes de escrever qualquer linha. A seção 2 é pré-requisito
-de tudo.
+Leia até a seção 2 antes de escrever qualquer linha. A seção 2 já foi executada
+para a primeira conta (31/07/2026) e continua sendo pré-requisito para cada
+conta nova.
 
 - Pacote: `apps/mcp-local/`
 - Manual de uso: [`apps/mcp-local/README.md`](../apps/mcp-local/README.md)
@@ -15,40 +16,50 @@ de tudo.
 
 ## 1. Estado atual, sem maquiagem
 
+**Aceite executado em 31/07/2026** contra a instância real
+(`post.marcelofranca.pro`, perfil MFPRO). Passos 1 a 6 da seção 2: verdes.
+Passo 7 (publicação de verdade): pendente.
+
 ### Verificado
 
 | O quê | Como foi verificado |
 |---|---|
-| Núcleo (contas, descoberta, cliente HTTP, agendador) | 85 testes, 5 suítes, `pnpm test:mcp-local` |
-| Compilação | `pnpm build:mcp-local` sem erro |
-| Handshake MCP por stdio | `initialize` + `tools/list` respondidos por processo real |
-| `listarContas` e `listarPostsPendentes` | Executados ponta a ponta contra arquivos reais em disco |
+| Núcleo (contas, descoberta, cliente HTTP, agendador) | 87 testes, 5 suítes, `pnpm test:mcp-local` |
+| Compilação | `pnpm build:mcp-local` sem erro, `tsc --noEmit` limpo |
+| Handshake MCP por stdio | `initialize` + `tools/list` + `tools/call` respondidos por processo real |
+| Registro como servidor MCP | `claude mcp add` no Claude Code: conecta e expõe as cinco ferramentas |
+| Formato do payload de `POST /public/v1/posts` | Conferido campo a campo contra `CreatePostDto` e `MediaDto` do backend, sem divergência |
+| `sincronizarCanais` contra a instância real | Autenticou com chave de perfil e devolveu as integrações reais |
+| `listarPostsPendentes` e `validarPost` contra a instância real | Ponta a ponta, `ok: true`, canais resolvidos para os nomes reais |
+| **`agendarPost` com `tipo: "draft"`** | **Upload multipart real de 2 mídias e post real criado.** Conferido no app: perfil certo, canal certo, legenda certa, slides na ordem certa e horário 23:00 respeitando o fuso `-03:00` |
+| Idempotência | Segunda chamada recusada citando `.agendado.json`; o post migrou de `prontos` para `jaAgendados` |
 | Leitura de `contas.json` + `.env`, ancoragem de caminho relativo, ordenação numérica de mídias | Idem |
 
 ### **Não** verificado
 
 | O quê | Por que importa |
 |---|---|
-| `sincronizarCanais` contra a instância real | Nunca fez uma requisição HTTP de verdade |
-| `validarPost` contra a instância real | Idem |
-| `agendarPost` contra a instância real | **Nenhum upload real, nenhum post real criado** |
-| Formato do payload de `POST /public/v1/posts` | Modelado a partir de `scripts/agendar-carrossel.mjs`, mas não confirmado |
-| Upload multipart (`FormData` + `Blob`) contra `POST /public/v1/upload` | Idem |
-| Funcionamento dentro do Claude Desktop | Testado só por stdio cru |
+| Passo 7: publicar de verdade no horário marcado | Exige backend **e Temporal** no ar. É o único passo que publica conteúdo real |
+| `agendarPost` com `tipo: "schedule"` | Mesmo caminho de código do draft; muda só o `type` do payload |
+| Vídeo (`.mp4`) | Só imagens foram exercitadas ponta a ponta |
+| LinkedIn e as demais redes | Só o Instagram foi exercitado ponta a ponta |
+| Funcionamento dentro do Claude Desktop | Não instalado nesta máquina. Validado no Claude Code, que usa o mesmo transporte stdio |
 
-O cliente HTTP é testado com `fetch` falso. Isso prova a lógica, não prova o
-contrato com o servidor.
-
-**Consequência prática:** não coloque em fluxo automático antes de fechar a
-seção 2. Automatizar um caminho cujo último passo nunca rodou é publicar no
-escuro.
+**Consequência prática:** o caminho crítico — upload real e criação de post
+real — está provado. Falta ver a coisa sair no horário (passo 7) antes de
+confiar num laço automático.
 
 ---
 
 ## 2. Roteiro de aceite (pré-requisito)
 
-Faça isto **manualmente**, uma vez, antes de automatizar qualquer coisa. Cada
-passo tem um critério objetivo.
+**Já executado em 31/07/2026 para a conta `mfpro`** — passos 1 a 6 verdes, só o
+7 falta. Você não precisa repetir para essa conta. O roteiro continua valendo,
+na íntegra, para **cada conta nova** que entrar no `contas.json`: chave, canais
+e permissões são por perfil, e nada disso é herdado.
+
+Faça isto **manualmente**, uma vez por conta, antes de automatizar qualquer
+coisa. Cada passo tem um critério objetivo.
 
 ### Passo 0 — Preparar
 

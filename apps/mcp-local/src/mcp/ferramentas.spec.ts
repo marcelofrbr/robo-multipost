@@ -168,7 +168,10 @@ describe('sincronizarCanais', () => {
     );
 
     const saida = JSON.parse(textoDe(resposta));
-    expect(saida.sugestaoCanais).toEqual({ ig: 'id-ig', li: 'nova-li' });
+    expect(saida.sugestaoCanais).toEqual({
+      ig: 'id-ig',
+      'li-pagina': 'nova-li',
+    });
   });
 
   it('deve marcar o apelido atual de cada integracao do perfil', async () => {
@@ -195,6 +198,51 @@ describe('sincronizarCanais', () => {
         apelidoAtual: null,
       },
     ]);
+  });
+
+  it('nao deve perder canal quando dois da mesma rede sugerem o mesmo apelido', async () => {
+    const listar = jest.fn().mockResolvedValue([
+      { id: 'id-li-perfil', name: 'Perfil LI', identifier: 'linkedin' },
+      { id: 'id-li-pagina', name: 'Pagina LI', identifier: 'linkedin-page' },
+    ]);
+
+    const resposta = await executarFerramenta(
+      contextoFalso(
+        { 'marca-a': conta({ canais: {}, canaisPadrao: [] }) },
+        listar
+      ),
+      'sincronizarCanais',
+      { conta: 'marca-a' }
+    );
+
+    const saida = JSON.parse(textoDe(resposta));
+    expect(Object.keys(saida.sugestaoCanais)).toHaveLength(2);
+    expect(Object.values(saida.sugestaoCanais).sort()).toEqual([
+      'id-li-pagina',
+      'id-li-perfil',
+    ]);
+  });
+
+  it('deve desempatar apelido repetido com sufixo numerico', async () => {
+    const listar = jest.fn().mockResolvedValue([
+      { id: 'id-ig-um', name: 'IG Um', identifier: 'instagram' },
+      { id: 'id-ig-dois', name: 'IG Dois', identifier: 'instagram' },
+    ]);
+
+    const resposta = await executarFerramenta(
+      contextoFalso(
+        { 'marca-a': conta({ canais: {}, canaisPadrao: [] }) },
+        listar
+      ),
+      'sincronizarCanais',
+      { conta: 'marca-a' }
+    );
+
+    const saida = JSON.parse(textoDe(resposta));
+    expect(saida.sugestaoCanais).toEqual({
+      ig: 'id-ig-um',
+      'ig-2': 'id-ig-dois',
+    });
   });
 
   it('deve deixar canal desabilitado fora da sugestao', async () => {
