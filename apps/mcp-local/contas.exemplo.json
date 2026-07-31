@@ -1,0 +1,25 @@
+{
+  "_leia": "Copie para ~/.robo-multipost/contas.json e edite. As CHAVES ficam no .env ao lado, nunca aqui.",
+
+  "baseUrl": "https://seu-dominio/api",
+
+  "contas": {
+    "marca-a": {
+      "apiKeyEnv": "POSTIZ_KEY_MARCA_A",
+      "pasta": "C:/midias/marca-a",
+      "canais": {
+        "ig": "cole-aqui-o-id-do-instagram",
+        "li": "cole-aqui-o-id-do-linkedin"
+      },
+      "canaisPadrao": ["ig", "li"]
+    },
+
+    "marca-b": {
+      "apiKeyEnv": "POSTIZ_KEY_MARCA_B",
+      "pasta": "C:/midias/marca-b",
+      "canais": {
+        "ig": "cole-aqui-o-id-do-instagram-da-marca-b"
+      }
+    }
+  }
+}

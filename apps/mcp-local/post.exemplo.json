@@ -1,0 +1,22 @@
+{
+  "_leia": "Copie para dentro da pasta do post, com o nome post.json. So legenda e data sao obrigatorios.",
+
+  "legenda": "Texto do post. Pode ter #hashtags e emoji.",
+
+  "data": "2026-08-01T09:00:00-03:00",
+  "_sobre_data": "ISO 8601 COM FUSO. O -03:00 e Brasilia. Sem o fuso a data vira UTC e o post sai 3 horas fora do lugar.",
+
+  "tipo": "carrossel",
+  "_sobre_tipo": "carrossel | post | reels | story. Padrao: carrossel. No Instagram, video enviado como post ja vira reel.",
+
+  "canais": ["ig", "li"],
+  "_sobre_canais": "Apelidos definidos no contas.json. Omita esta linha para usar os canaisPadrao da conta.",
+
+  "legendaPorCanal": {
+    "li": "Versao mais longa e formal para o LinkedIn."
+  },
+  "_sobre_legendaPorCanal": "Opcional. O canal que nao aparecer aqui usa a legenda principal.",
+
+  "nomeCarrossel": "Nome do carrossel no LinkedIn",
+  "encurtarLinks": false
+}

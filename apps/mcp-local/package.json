@@ -1,0 +1,13 @@
+{
+  "name": "@gitroom/mcp-local",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MCP local que agenda posts a partir de pastas de midia no computador, para multiplos perfis e canais",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "jest -c jest.config.ts"
+  },
+  "license": "AGPL-3.0"
+}

@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "module": "node16",
+    "moduleResolution": "node16",
+    "target": "es2020",
+    "lib": ["es2021", "dom"],
+    "types": ["node"],
+    "declaration": false,
+    "sourceMap": true,
+    "incremental": false,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "emitDecoratorMetadata": false,
+    "experimentalDecorators": false,
+    "paths": {}
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/**/*.spec.ts"]
+}
