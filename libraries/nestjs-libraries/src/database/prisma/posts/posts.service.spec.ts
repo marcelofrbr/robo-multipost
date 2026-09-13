@@ -130,6 +130,53 @@ describe('PostsService escopo de perfil (API publica)', () => {
     });
   });
 
+  describe('assertPostBodyInScope (upsert de POST /posts)', () => {
+    const body = (posts: any[]) => ({ posts } as any);
+
+    it('ids/grupos novos (inexistentes) passam sem consultar o perfil', async () => {
+      repository.getPostById.mockResolvedValue(null);
+      repository.getGroupOwner.mockResolvedValue(null);
+
+      await expect(
+        service.assertPostBodyInScope('org-1', body([{ group: 'g-novo', value: [{ id: 'p-novo' }] }]), 'prof-1')
+      ).resolves.toBeUndefined();
+    });
+
+    it('value[].id de outra org -> 404 (nao pode sobrescrever post alheio)', async () => {
+      repository.getPostById.mockResolvedValue({ id: 'p1', organizationId: 'org-OUTRA', profileId: null } as any);
+
+      await expect(
+        service.assertPostBodyInScope('org-1', body([{ value: [{ id: 'p1' }] }]))
+      ).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('value[].id de outro perfil (chave de perfil) -> 404; sem perfil no post passa', async () => {
+      repository.getPostById.mockResolvedValue({ id: 'p1', organizationId: 'org-1', profileId: 'prof-outro' } as any);
+      await expect(
+        service.assertPostBodyInScope('org-1', body([{ value: [{ id: 'p1' }] }]), 'prof-1')
+      ).rejects.toMatchObject({ status: 404 });
+
+      repository.getPostById.mockResolvedValue({ id: 'p1', organizationId: 'org-1', profileId: null } as any);
+      await expect(
+        service.assertPostBodyInScope('org-1', body([{ value: [{ id: 'p1' }] }]), 'prof-1')
+      ).resolves.toBeUndefined();
+    });
+
+    it('group de outra org ou de outro perfil -> 404 (o upsert apaga o resto do grupo)', async () => {
+      repository.getPostById.mockResolvedValue(null);
+      repository.getGroupOwner.mockResolvedValue({ organizationId: 'org-OUTRA', profileId: null } as any);
+      await expect(
+        service.assertPostBodyInScope('org-1', body([{ group: 'g1', value: [] }]))
+      ).rejects.toMatchObject({ status: 404 });
+
+      repository.getGroupOwner.mockResolvedValue({ organizationId: 'org-1', profileId: 'prof-outro' } as any);
+      await expect(
+        service.assertPostBodyInScope('org-1', body([{ group: 'g1', value: [] }]), 'prof-1')
+      ).rejects.toMatchObject({ status: 404 });
+      expect(repository.getGroupOwner).toHaveBeenCalledWith('g1');
+    });
+  });
+
   describe('getGroupInScope', () => {
     it('devolve os posts do grupo quando todos sao do perfil', async () => {
       repository.getPostsByGroup.mockResolvedValue([

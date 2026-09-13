@@ -16,15 +16,15 @@ Guia irmão: [Automações e DM](automacoes-e-dm.md).
 | Rota | O que faz |
 |---|---|
 | `GET /posts?startDate=&endDate=` | Posts do calendário no período (ISO 8601). Chave de perfil vê só os do perfil |
-| `POST /posts` | Cria **ou edita**: reenviar com o mesmo `group` e `posts[].value[].id` atualiza os posts em vez de criar (o `id` de cada item é a chave do upsert) |
-| `GET /posts/:id` | Post completo — grupo, mídias e comentários encadeados. O `integration` embutido traz só `id`, `name`, `picture`, `providerIdentifier`, `disabled`, `profileId` (nunca tokens) |
+| `POST /posts` | Cria **ou edita**: reenviar com o mesmo `group` e `posts[].value[].id` atualiza os posts em vez de criar (o `id` de cada item é a chave do upsert). ⚠️ Num grupo multi-canal, reenvie **todos** os canais do grupo — os que ficarem de fora são removidos. Ids/grupos de outro perfil ou organização: 404 |
+| `GET /posts/:id` | Post completo — grupo, mídias e itens da thread (`childrenPost`). O `integration` embutido traz só `id`, `name`, `picture`, `providerIdentifier`, `disabled`, `profileId` (nunca tokens) |
 | `GET /posts/group/:group` | Todos os posts de uma publicação multi-canal |
 | `GET /posts/:id/statistics` | Cliques nos links encurtados do post |
 | `PUT /posts/:id/date` `{ "date", "action"? }` | Muda a data. `action=schedule` (padrão) reagenda e volta para a fila; `update` só troca a data |
-| `POST /posts/:id/comments` `{ "comment" }` | Comentário interno da equipe (não vai para a rede). Autor: dono da organização |
+| `POST /posts/:id/comments` `{ "comment" }` | Comentário interno da equipe (não vai para a rede; aparece na tela do post — a API não lista comentários). Autor: dono da organização |
 | `DELETE /posts/:id` · `DELETE /posts/group/:group` | Apaga o post (e o grupo dele) / o grupo inteiro |
-| `GET /find-slot/:integrationId` | Próximo horário livre do canal |
-| `GET /posts/:id/missing` · `PUT /posts/:id/release-id` | Conteúdo pendente / id externo (já existiam) |
+| `GET /find-slot/:integrationId` | Próximo horário livre do canal (canal precisa ser do seu escopo) |
+| `GET /posts/:id/missing` · `PUT /posts/:id/release-id` | Conteúdo pendente / id externo (já existiam; agora com escopo de perfil) |
 
 Exemplo — reagendar um post e deixar um comentário para a equipe:
 
@@ -78,7 +78,7 @@ curl -H "Authorization: $CHAVE" "$BASE/media?page=1&from=2026-09-01T03:00:00.000
 | `POST /integrations/:id/enable` · `POST /integrations/:id/disable` | Reativa / desativa o canal (posts agendados num canal desativado deixam de sair) |
 | `GET /integration-settings/:id` | Configurações atuais do provedor |
 | `POST /integrations/:id/settings` `{ "additionalSettings": [{ "title", "value" }] }` | Atualiza as configurações (aceita o array ou a string JSON dele) |
-| `DELETE /integrations/:id` | Remove o canal (já existia) |
+| `DELETE /integrations/:id` | Remove o canal e os posts dele (já existia; agora com escopo de perfil e limite de 30/hora) |
 
 ```bash
 curl -X POST -H "Authorization: $CHAVE" "$BASE/integrations/$IG/disable"

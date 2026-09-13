@@ -797,7 +797,39 @@ export class PostsService {
     } catch (err) {}
   }
 
+  /**
+   * POST /posts e um upsert por `value[].id` e o repositorio soft-deleta o
+   * resto do `group`. Sem esta checagem, um id/grupo de OUTRA org (ou de
+   * outro perfil, com chave de perfil) seria sobrescrito/apagado. Ids e
+   * grupos inexistentes sao criacao normal e passam.
+   */
+  async assertPostBodyInScope(orgId: string, body: CreatePostDto, profileId?: string) {
+    const outOfScope = (
+      owner: { organizationId: string; profileId: string | null } | null
+    ) =>
+      !!owner &&
+      (owner.organizationId !== orgId ||
+        (!!profileId && !!owner.profileId && owner.profileId !== profileId));
+
+    for (const post of body.posts || []) {
+      if (post.group) {
+        const owner = await this._postRepository.getGroupOwner(post.group);
+        if (outOfScope(owner)) {
+          throw new NotFoundException('Post group not found');
+        }
+      }
+      for (const value of post.value || []) {
+        if (!value?.id) continue;
+        const existing = await this._postRepository.getPostById(value.id);
+        if (outOfScope(existing)) {
+          throw new NotFoundException('Post not found');
+        }
+      }
+    }
+  }
+
   async createPost(orgId: string, body: CreatePostDto, profileId?: string): Promise<any[]> {
+    await this.assertPostBodyInScope(orgId, body, profileId);
     const postList = [];
     for (const post of body.posts) {
       const messages = (post.value || []).map((p) => p.content);
