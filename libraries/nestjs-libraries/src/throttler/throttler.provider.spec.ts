@@ -16,7 +16,7 @@ const makeContext = (
     }),
     getHandler: () => handler,
     getClass: () => classRef,
-  }) as unknown as ExecutionContext;
+  } as unknown as ExecutionContext);
 
 describe('ThrottlerBehindProxyGuard', () => {
   let guard: ThrottlerBehindProxyGuard;
@@ -77,6 +77,21 @@ describe('ThrottlerBehindProxyGuard', () => {
 
     await guard.canActivate(
       makeContext('POST', '/flows/dm/bot', Ctrl.prototype.handler, Ctrl)
+    );
+
+    expect(superCanActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it('aplica o limitador em rota com @Throttle de throttler nomeado (nao so default)', async () => {
+    class Ctrl {
+      @Throttle({ ia: { limit: 5, ttl: 1000 } })
+      handler(): void {
+        return undefined;
+      }
+    }
+
+    await guard.canActivate(
+      makeContext('POST', '/ai/caption', Ctrl.prototype.handler, Ctrl)
     );
 
     expect(superCanActivate).toHaveBeenCalledTimes(1);

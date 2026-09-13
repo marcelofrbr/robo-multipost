@@ -1,9 +1,12 @@
 import { ThrottlerGuard } from '@nestjs/throttler';
-// Constante interna (nao reexportada pelo index do pacote): e a mesma chave
-// que @Throttle grava no handler/classe.
-import { THROTTLER_LIMIT } from '@nestjs/throttler/dist/throttler.constants';
 import { ExecutionContext, Injectable } from '@nestjs/common';
 import { Request } from 'express';
+
+// Prefixo das chaves que @Throttle grava via Reflect.defineMetadata
+// (`THROTTLER:LIMIT` + nome do throttler — 'default' quando nao nomeado).
+// E constante interna do @nestjs/throttler, nao reexportada; o spec exercita o
+// decorator real, entao uma mudanca de formato no pacote falha alto.
+const THROTTLE_LIMIT_KEY_PREFIX = 'THROTTLER:LIMIT';
 
 @Injectable()
 export class ThrottlerBehindProxyGuard extends ThrottlerGuard {
@@ -35,10 +38,12 @@ export class ThrottlerBehindProxyGuard extends ThrottlerGuard {
   }
 
   private hasExplicitThrottle(context: ExecutionContext): boolean {
-    const limit = this.reflector.getAllAndOverride<unknown>(
-      THROTTLER_LIMIT + 'default',
-      [context.getHandler(), context.getClass()]
+    // Qualquer throttler (default ou nomeado) declarado no handler ou na classe.
+    return [context.getHandler(), context.getClass()].some((target) =>
+      Reflect.getMetadataKeys(target).some(
+        (key) =>
+          typeof key === 'string' && key.startsWith(THROTTLE_LIMIT_KEY_PREFIX)
+      )
     );
-    return limit !== undefined;
   }
 }
