@@ -315,6 +315,7 @@ describe('DmFlowService', () => {
   describe('resolveConversation', () => {
     it('deve fechar a conversa com escopo por org', async () => {
       // ARRANGE
+      dmRepository.getConversationForOrg.mockResolvedValue({ id: 'conv-1' } as any);
       dmRepository.closeConversationForOrg.mockResolvedValue({
         id: 'conv-1',
         status: 'CLOSED',
@@ -333,6 +334,7 @@ describe('DmFlowService', () => {
     });
 
     it('deve repassar o profileId para fechar so conversas do proprio perfil', async () => {
+      dmRepository.getConversationForOrg.mockResolvedValue({ id: 'conv-1' } as any);
       dmRepository.closeConversationForOrg.mockResolvedValue({
         id: 'conv-1',
         status: 'CLOSED',
@@ -340,11 +342,25 @@ describe('DmFlowService', () => {
 
       await service.resolveConversation('org-1', 'conv-1', 'prof-1');
 
+      expect(dmRepository.getConversationForOrg).toHaveBeenCalledWith(
+        'conv-1',
+        'org-1',
+        'prof-1'
+      );
       expect(dmRepository.closeConversationForOrg).toHaveBeenCalledWith(
         'conv-1',
         'org-1',
         'prof-1'
       );
+    });
+
+    it('lanca 404 (em vez de 500 do prisma) quando a conversa nao esta no escopo', async () => {
+      dmRepository.getConversationForOrg.mockResolvedValue(null);
+
+      await expect(
+        service.resolveConversation('org-1', 'conv-de-outro', 'prof-1')
+      ).rejects.toMatchObject({ status: 404 });
+      expect(dmRepository.closeConversationForOrg).not.toHaveBeenCalled();
     });
   });
 });

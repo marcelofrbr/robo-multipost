@@ -80,10 +80,10 @@ A automação nasce **ativa** (`status: ACTIVE`); ao ativar, o app inscreve a co
 | Código | Quando |
 |---|---|
 | 401 | Sem chave ou chave inválida |
-| 400 | Corpo inválido — campo desconhecido, `postIds` vazio com `postMode=specific`, URL de botão não-https |
+| 400 | Corpo inválido — campo desconhecido, `postIds`/`storyIds` vazio com `postMode=specific`, URL de botão não-https, canal que não é Instagram ou webhook da Meta não assinado (confira `/webhook-status`) |
 | 403 | Chave de perfil pedindo outro perfil, ou canal de outro perfil |
-| 404 | Automação/execução fora do seu escopo |
+| 404 | Automação, execução ou conversa fora do seu escopo (outro perfil/organização) |
 | 412 | Canal inexistente, desativado ou com token expirado (reconecte na tela) |
-| 429 | Limite de requisições nos `POST` de automação |
+| 429 | Limite de requisições: 20/hora para criar, editar, ativar e ligar o bot (cada uma dispara assinatura de webhook na Meta); 60/minuto nas leituras de posts, stories e webhook-status; 60/hora para resolver escalações |
 
 Todas as rotas também aparecem na documentação interativa: `https://<seu-dominio>/api/docs` (Swagger, seção **Automações (Flows)**) — clique em **Authorize** e cole a chave de API.

@@ -62,6 +62,39 @@ describe('PublicFlowsController', () => {
       );
     });
 
+    it('lanca 400 quando postMode=specific vem sem postIds (comentario) ou sem storyIds (story)', async () => {
+      await expect(
+        controller.createFlow(org, undefined, undefined, {
+          name: 'X',
+          integrationId: 'int-1',
+          postMode: 'specific',
+          dmMessage: 'oi',
+        } as any)
+      ).rejects.toMatchObject({ status: 400 });
+
+      await expect(
+        controller.createFlow(org, undefined, undefined, {
+          name: 'X',
+          integrationId: 'int-1',
+          triggerType: 'story_reply',
+          postMode: 'specific',
+          postIds: ['m1'],
+          dmMessage: 'oi',
+        } as any)
+      ).rejects.toMatchObject({ status: 400 });
+      expect(flowsService.quickCreateFlow).not.toHaveBeenCalled();
+
+      flowsService.quickCreateFlow.mockResolvedValue({ id: 'flow-1' });
+      await controller.createFlow(org, undefined, undefined, {
+        name: 'X',
+        integrationId: 'int-1',
+        postMode: 'specific',
+        postIds: ['m1'],
+        dmMessage: 'oi',
+      } as any);
+      expect(flowsService.quickCreateFlow).toHaveBeenCalledTimes(1);
+    });
+
     it('deve respeitar postMode explicito quando informado', async () => {
       flowsService.quickCreateFlow.mockResolvedValue({ id: 'flow-1' });
       await controller.createFlow(org, undefined, undefined, {
@@ -164,10 +197,19 @@ describe('PublicFlowsController', () => {
       expect(err.getStatus()).toBe(403);
       expect(flowsService.getFlow).not.toHaveBeenCalled();
     });
+
+    it('lanca 404 (em vez de 200 vazio) quando o flow nao esta no escopo', async () => {
+      flowsService.getFlow.mockResolvedValue(null);
+
+      await expect(
+        controller.getFlow(org, 'perfil-A', 'f-outro', undefined)
+      ).rejects.toMatchObject({ status: 404 });
+    });
   });
 
   describe('updateFlow', () => {
     it('deve delegar para quickUpdateFlow com escopo de perfil', async () => {
+      flowsService.getFlow.mockResolvedValue({ id: 'f1' });
       flowsService.quickUpdateFlow.mockResolvedValue({ id: 'f1' });
       await controller.updateFlow(org, undefined, 'f1', undefined, {
         name: 'Novo nome',
@@ -189,10 +231,36 @@ describe('PublicFlowsController', () => {
       expect(err.getStatus()).toBe(403);
       expect(flowsService.quickUpdateFlow).not.toHaveBeenCalled();
     });
+
+    it('lanca 400 ao editar para postMode=specific sem alvo', async () => {
+      flowsService.getFlow.mockResolvedValue({ id: 'f1' });
+
+      await expect(
+        controller.updateFlow(org, undefined, 'f1', undefined, {
+          name: 'X',
+          integrationId: 'int-1',
+          postMode: 'specific',
+        } as any)
+      ).rejects.toMatchObject({ status: 400 });
+      expect(flowsService.quickUpdateFlow).not.toHaveBeenCalled();
+    });
+
+    it('lanca 404 antes de editar quando o flow nao esta no escopo', async () => {
+      flowsService.getFlow.mockResolvedValue(null);
+
+      await expect(
+        controller.updateFlow(org, 'perfil-A', 'f-outro', undefined, {
+          name: 'X',
+          integrationId: 'int-1',
+        } as any)
+      ).rejects.toMatchObject({ status: 404 });
+      expect(flowsService.quickUpdateFlow).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateFlowStatus', () => {
     it('deve delegar status para o service', async () => {
+      flowsService.getFlow.mockResolvedValue({ id: 'f1' });
       flowsService.updateFlowStatus.mockResolvedValue({ id: 'f1' });
       await controller.updateFlowStatus(org, undefined, 'f1', undefined, {
         status: FlowStatus.PAUSED,
@@ -204,13 +272,35 @@ describe('PublicFlowsController', () => {
         undefined
       );
     });
+
+    it('lanca 404 (em vez de 500 do prisma) quando o flow nao esta no escopo', async () => {
+      flowsService.getFlow.mockResolvedValue(null);
+
+      await expect(
+        controller.updateFlowStatus(org, 'perfil-A', 'f-outro', undefined, {
+          status: FlowStatus.PAUSED,
+        })
+      ).rejects.toMatchObject({ status: 404 });
+      expect(flowsService.updateFlowStatus).not.toHaveBeenCalled();
+    });
   });
 
   describe('deleteFlow', () => {
     it('chave por-perfil: delega delete com o proprio profileId', async () => {
+      flowsService.getFlow.mockResolvedValue({ id: 'f1' });
       flowsService.deleteFlow.mockResolvedValue({ id: 'f1' });
       await controller.deleteFlow(org, 'perfil-A', 'f1', undefined);
+      expect(flowsService.getFlow).toHaveBeenCalledWith('org-1', 'f1', 'perfil-A');
       expect(flowsService.deleteFlow).toHaveBeenCalledWith('org-1', 'f1', 'perfil-A');
+    });
+
+    it('lanca 404 (em vez de 500 do prisma) quando o flow nao esta no escopo', async () => {
+      flowsService.getFlow.mockResolvedValue(null);
+
+      await expect(
+        controller.deleteFlow(org, 'perfil-A', 'f-outro', undefined)
+      ).rejects.toMatchObject({ status: 404 });
+      expect(flowsService.deleteFlow).not.toHaveBeenCalled();
     });
   });
   describe('executions', () => {

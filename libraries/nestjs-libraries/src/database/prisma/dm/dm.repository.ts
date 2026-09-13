@@ -124,6 +124,16 @@ export class DmRepository {
     });
   }
 
+  getConversationForOrg(id: string, orgId: string, profileId?: string) {
+    return this._dmConversation.model.dmConversation.findFirst({
+      where: {
+        id,
+        organizationId: orgId,
+        ...(profileId ? { profileId } : {}),
+      },
+    });
+  }
+
   closeConversationForOrg(id: string, orgId: string, profileId?: string) {
     // Com profileId (chave/sessao de perfil), so fecha conversas do proprio
     // perfil — espelha o filtro de listEscalations.

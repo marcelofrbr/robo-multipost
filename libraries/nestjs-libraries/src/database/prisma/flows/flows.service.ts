@@ -21,6 +21,7 @@ import {
   SaveCanvasDto,
   QuickCreateFlowDto,
 } from '@gitroom/nestjs-libraries/dtos/flows/flow.dto';
+import { checkPublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/validators/is-public-https-url.validator';
 import { TemporalService } from 'nestjs-temporal-core';
 import {
   organizationId as orgSearchAttr,
@@ -86,7 +87,9 @@ export class FlowsService {
         HttpStatus.PRECONDITION_FAILED
       );
     }
-    if ((integration as any).disabled) {
+    // refreshNeeded e gravado quando o refresh do token falha (a Graph API
+    // vai recusar a assinatura do webhook) — mesmo 412 da integracao desativada.
+    if ((integration as any).disabled || (integration as any).refreshNeeded) {
       throw new HttpException(
         'Integracao desativada ou com token expirado. Reconecte a conta antes de criar automacoes.',
         HttpStatus.PRECONDITION_FAILED
@@ -543,6 +546,7 @@ export class FlowsService {
       throw new BadRequestException('Flow not found');
     }
     await this.assertIntegrationAccess(orgId, current.integrationId, profileId);
+    this.assertDmButtonUrl(body.dmButtonUrl);
     await this._flowsRepository.updateFlow(orgId, id, { name: body.name }, profileId);
 
     const triggerType = body.triggerType ?? 'comment_on_post';
@@ -599,8 +603,24 @@ export class FlowsService {
     return this._flowsRepository.getFlow(orgId, id, profileId);
   }
 
+  /**
+   * Mesma regra do decorator @IsPublicHttpsUrl do DTO, aplicada aqui para os
+   * chamadores que nao passam pelo ValidationPipe (tools MCP chamam o service
+   * direto). Campo opcional: ausente/vazio passa.
+   */
+  private assertDmButtonUrl(dmButtonUrl?: string) {
+    if (!dmButtonUrl) {
+      return;
+    }
+    const error = checkPublicHttpsUrl(dmButtonUrl);
+    if (error) {
+      throw new BadRequestException(`dmButtonUrl: ${error}`);
+    }
+  }
+
   async quickCreateFlow(orgId: string, body: QuickCreateFlowDto, profileId?: string) {
     await this.assertIntegrationAccess(orgId, body.integrationId, profileId);
+    this.assertDmButtonUrl(body.dmButtonUrl);
     const check = await this.checkIntegrationWebhook(orgId, body.integrationId);
     if (!check.ok) {
       throw new BadRequestException(check.error);

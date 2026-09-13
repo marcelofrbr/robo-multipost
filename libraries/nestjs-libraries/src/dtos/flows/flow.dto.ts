@@ -3,10 +3,8 @@ import {
   IsOptional,
   IsEnum,
   IsArray,
-  ArrayNotEmpty,
   ArrayMaxSize,
   ValidateNested,
-  ValidateIf,
   IsNumber,
   IsIn,
   IsBoolean,
@@ -144,37 +142,31 @@ export class QuickCreateFlowDto {
   @IsIn(['all', 'specific', 'next_publication'])
   postMode?: 'all' | 'specific' | 'next_publication';
 
-  // Obrigatorio e nao-vazio quando postMode='specific' em comentario de post.
-  // Em story_reply o alvo vem de storyIds, entao postIds fica opcional.
+  // Opcional no DTO (o wizard privado salva postMode='specific' sem selecao e
+  // o service trata como "qualquer post"). A API publica exige o alvo quando
+  // postMode='specific' — regra em PublicFlowsController.assertSpecificTargets.
   @ApiPropertyOptional({
     type: [String],
     maxItems: 100,
     description:
-      'IDs de mídia do Instagram. OBRIGATÓRIO (não-vazio) quando postMode=specific e triggerType=comment_on_post.',
+      'IDs de mídia do Instagram. Na API pública é OBRIGATÓRIO (não-vazio) quando postMode=specific e triggerType=comment_on_post.',
     example: ['17999999999999999'],
   })
-  @ValidateIf(
-    (o) =>
-      o.postMode === 'specific' &&
-      (o.triggerType ?? 'comment_on_post') === 'comment_on_post'
-  )
+  @IsOptional()
   @IsArray()
-  @ArrayNotEmpty()
   @ArrayMaxSize(100)
   @IsString({ each: true })
   @MaxLength(64, { each: true })
   postIds?: string[];
 
-  // Obrigatorio e nao-vazio quando postMode='specific' em story_reply.
   @ApiPropertyOptional({
     type: [String],
     maxItems: 100,
     description:
-      'IDs de story do Instagram. OBRIGATÓRIO (não-vazio) quando postMode=specific e triggerType=story_reply.',
+      'IDs de story do Instagram. Na API pública é OBRIGATÓRIO (não-vazio) quando postMode=specific e triggerType=story_reply.',
   })
-  @ValidateIf((o) => o.postMode === 'specific' && o.triggerType === 'story_reply')
+  @IsOptional()
   @IsArray()
-  @ArrayNotEmpty()
   @ArrayMaxSize(100)
   @IsString({ each: true })
   @MaxLength(64, { each: true })

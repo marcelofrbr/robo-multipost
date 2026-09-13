@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -152,7 +153,7 @@ export class PublicFlowsController {
   @ApiResponse({
     status: 400,
     description:
-      'Validação: dmButtonUrl não-https, postIds vazio em postMode=specific, matchMode inválido, ou profileId inexistente.',
+      'Validação: dmButtonUrl não-https, postIds vazio em postMode=specific, matchMode inválido, profileId inexistente, canal que não é Instagram ou webhook da Meta não assinado (veja /webhook-status).',
   })
   @ApiResponse({ status: 401, description: 'Chave de API ausente ou inválida.' })
   @ApiResponse({
@@ -161,7 +162,7 @@ export class PublicFlowsController {
   })
   @ApiResponse({
     status: 412,
-    description: 'Integração não é Instagram, está desativada ou não existe.',
+    description: 'Canal inexistente, desativado ou com token expirado (reconecte na tela).',
   })
   // Cada criacao/ativacao dispara assinatura de webhook na Meta Graph API
   // (rate-limit ~10 req/s por app) — limite proprio mais apertado que o global.
@@ -184,6 +185,7 @@ export class PublicFlowsController {
       ...body,
       postMode: body.postMode ?? 'next_publication',
     };
+    this.assertSpecificTargets(payload);
     return this._flowsService.quickCreateFlow(
       org.id,
       payload,
@@ -226,6 +228,7 @@ export class PublicFlowsController {
   @ApiOperation({ summary: 'Detalhar uma automação (com nós e arestas)' })
   @ApiParam({ name: 'id', description: 'ID do flow' })
   @ApiQuery({ name: 'profileId', required: false })
+  @ApiResponse({ status: 404, description: 'Automação fora do seu escopo' })
   async getFlow(
     @GetOrgFromRequest() org: Organization,
     @GetPublicApiProfileId() publicApiProfileId: string | undefined,
@@ -237,7 +240,7 @@ export class PublicFlowsController {
       publicApiProfileId,
       profileId
     );
-    return this._flowsService.getFlow(org.id, id, effectiveProfileId);
+    return this.assertFlowInScope(org.id, id, effectiveProfileId);
   }
 
   @Put('/flows/:id')
@@ -249,6 +252,7 @@ export class PublicFlowsController {
   @ApiParam({ name: 'id', description: 'ID do flow' })
   @ApiQuery({ name: 'profileId', required: false })
   @ApiBody({ type: QuickCreateFlowDto, examples: FLOW_BODY_EXAMPLES })
+  @ApiResponse({ status: 404, description: 'Automação fora do seu escopo' })
   // quickUpdateFlow promove DRAFT->ACTIVE, disparando assinatura de webhook na
   // Meta — mesmo rate limit do POST para evitar abuso da chamada outbound.
   @Throttle({ default: { limit: 20, ttl: 3600_000 } })
@@ -264,6 +268,8 @@ export class PublicFlowsController {
       publicApiProfileId,
       profileId
     );
+    await this.assertFlowInScope(org.id, id, effectiveProfileId);
+    this.assertSpecificTargets(body);
     return this._flowsService.quickUpdateFlow(
       org.id,
       id,
@@ -280,6 +286,7 @@ export class PublicFlowsController {
   @ApiParam({ name: 'id', description: 'ID do flow' })
   @ApiQuery({ name: 'profileId', required: false })
   @ApiBody({ type: UpdateFlowStatusDto })
+  @ApiResponse({ status: 404, description: 'Automação fora do seu escopo' })
   // Ativar (status ACTIVE) dispara assinatura de webhook na Meta — throttle.
   @Throttle({ default: { limit: 20, ttl: 3600_000 } })
   async updateFlowStatus(
@@ -294,6 +301,7 @@ export class PublicFlowsController {
       publicApiProfileId,
       profileId
     );
+    await this.assertFlowInScope(org.id, id, effectiveProfileId);
     return this._flowsService.updateFlowStatus(
       org.id,
       id,
@@ -306,6 +314,7 @@ export class PublicFlowsController {
   @ApiOperation({ summary: 'Excluir uma automação' })
   @ApiParam({ name: 'id', description: 'ID do flow' })
   @ApiQuery({ name: 'profileId', required: false })
+  @ApiResponse({ status: 404, description: 'Automação fora do seu escopo' })
   async deleteFlow(
     @GetOrgFromRequest() org: Organization,
     @GetPublicApiProfileId() publicApiProfileId: string | undefined,
@@ -317,10 +326,37 @@ export class PublicFlowsController {
       publicApiProfileId,
       profileId
     );
+    await this.assertFlowInScope(org.id, id, effectiveProfileId);
     return this._flowsService.deleteFlow(org.id, id, effectiveProfileId);
   }
   // --- Execucoes -----------------------------------------------------------
 
+  /**
+   * `postMode=specific` sem alvo viraria silenciosamente "qualquer post" no
+   * service (comportamento que o wizard privado depende). Na API publica isso
+   * e erro de contrato: 400 com a mensagem certa em vez de surpresa em prod.
+   */
+  private assertSpecificTargets(body: QuickCreateFlowDto) {
+    if (body.postMode !== 'specific') {
+      return;
+    }
+    const triggerType = body.triggerType ?? 'comment_on_post';
+    const targets =
+      triggerType === 'story_reply' ? body.storyIds : body.postIds;
+    if (!targets?.length) {
+      throw new BadRequestException(
+        triggerType === 'story_reply'
+          ? 'storyIds is required (non-empty) when postMode=specific and triggerType=story_reply'
+          : 'postIds is required (non-empty) when postMode=specific'
+      );
+    }
+  }
+
+  /**
+   * Toda rota por `:id` passa por aqui antes de ler/mutar: sem isso o
+   * service devolve null (200 vazio) ou o Prisma estoura P2025 (500) quando
+   * o flow e de outro perfil/org — o contrato publico e 404.
+   */
   private async assertFlowInScope(
     orgId: string,
     flowId: string,

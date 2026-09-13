@@ -1783,6 +1783,67 @@ describe('FlowsService.assertIntegrationAccess (guard de integracao)', () => {
     ).rejects.toMatchObject({ status: 412 });
   });
 
+  it('quickCreateFlow responde 412 quando o token da integracao expirou (refreshNeeded)', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      refreshNeeded: true,
+      profileId: null,
+    });
+
+    await expect(
+      service.quickCreateFlow('org-1', { name: 'x', integrationId: 'int-1' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 412 });
+  });
+
+  it('quickCreateFlow responde 400 para dmButtonUrl fora do padrao https publico (caminho MCP, sem ValidationPipe)', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: null,
+    });
+    // Webhook ok: garante que o 400 vem da URL, nao da checagem de webhook.
+    const webhookSpy = jest
+      .spyOn(service, 'checkIntegrationWebhook')
+      .mockResolvedValue({ ok: true } as any);
+
+    await expect(
+      service.quickCreateFlow(
+        'org-1',
+        { name: 'x', integrationId: 'int-1', dmButtonUrl: 'http://meusite.com/oferta' } as any,
+        'profile-1'
+      )
+    ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('dmButtonUrl') });
+    await expect(
+      service.quickCreateFlow(
+        'org-1',
+        { name: 'x', integrationId: 'int-1', dmButtonUrl: 'https://127.0.0.1/admin' } as any,
+        'profile-1'
+      )
+    ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('dmButtonUrl') });
+    expect(mockRepository.createFlow).not.toHaveBeenCalled();
+    webhookSpy.mockRestore();
+  });
+
+  it('quickUpdateFlow responde 400 para dmButtonUrl fora do padrao https publico', async () => {
+    mockRepository.getFlow.mockResolvedValue({ id: 'flow-1', integrationId: 'int-1' });
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: null,
+    });
+
+    await expect(
+      service.quickUpdateFlow(
+        'org-1',
+        'flow-1',
+        { name: 'x', integrationId: 'int-1', dmButtonUrl: 'javascript:alert(1)' } as any,
+        'profile-1'
+      )
+    ).rejects.toMatchObject({ status: 400 });
+    expect(mockRepository.updateFlow).not.toHaveBeenCalled();
+  });
+
   it('quickCreateFlow responde 403 quando a integracao pertence a outro perfil', async () => {
     mockIntegrationService.getIntegrationById.mockResolvedValue({
       id: 'int-1',

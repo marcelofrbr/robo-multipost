@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { TemporalService } from 'nestjs-temporal-core';
 import { DmConversationStatus } from '@prisma/client';
 import { FlowsRepository } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.repository';
@@ -169,6 +169,16 @@ export class DmFlowService {
     conversationId: string,
     profileId?: string
   ) {
+    // Conversa fora do escopo (outra org/perfil) e 404 — sem isso o update
+    // com where composto estoura P2025 (500) na API publica.
+    const conversation = await this._dmRepository.getConversationForOrg(
+      conversationId,
+      orgId,
+      profileId
+    );
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
     return this._dmRepository.closeConversationForOrg(
       conversationId,
       orgId,
