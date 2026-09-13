@@ -133,12 +133,14 @@ For encrypting sensitive values (OAuth tokens, AI keys, messaging tokens): use t
 | `src/database/prisma/media/media.cleanup.service.ts` | `MediaCleanupService`: idempotent gallery cleanup. Count-guard, guards posts in QUEUE/DRAFT via `PostsService.getReferencedMediaPaths`, physical delete from storage (R2 `DeleteObject` or local filesystem) plus soft-delete in DB. Returns `{ deleted, skipped, failed }`. Env `MEDIA_RETENTION_DAYS` (default 30). Called by `StartupMigrationService.cleanupOldMedia()`. |
 | `src/database/prisma/media/media.repository.ts` | `MediaRepository.getMedia`: builds one `Prisma.MediaWhereInput` (org, `deletedAt: null`, profile OR-filter, optional `createdAt` range) shared by `count` and `findMany` — see Known Pitfall below |
 | `src/database/prisma/posts/carousel.scheduler.service.ts` | `CarouselSchedulerService`: schedules a carousel from a manifest (`scheduleFromManifest`), resolves org/profile from an API key. Used by the `schedule:carousel` CLI command. |
+| `src/database/prisma/posts/public.post.mapper.ts` | `toPublicPostPayload`/`toPublicIntegration`: allowlist for the `integration` object embedded in `/public/v1` post/integration responses — never `token`/`refreshToken`/`internalId`/`additionalSettings`. Used by `public.posts.controller.ts` and `public.integrations.controller.ts` in [`apps/backend/CLAUDE.md`](../../apps/backend/CLAUDE.md). |
 | `src/database/prisma/migrations/` | **Schema-level Prisma migrations** (DDL applied via `pnpm prisma-db-push`) |
 | `src/test/mock.factory.ts` | `createMock`, `createPrismaRepositoryMock` |
 | `src/test/create-testing-module.ts` | `createTestModule({ service, mocks })` |
 | `src/sentry/initialize.sentry.ts` | Sentry bootstrap (called by `apps/backend/src/main.ts`) |
 | `src/sentry/sentry.exception.ts` | Global exception `FILTER` |
 | `src/crypto/` | AES-256-GCM helpers |
+| `src/services/public-api-scope.service.ts` | `PublicApiScopeService.resolveProfileId(orgId, keyProfileId, requestedProfileId)` — canonical profile-scope guard for every `/public/v1` controller (403 on profile-key mismatch, 404 when an org-key requests another org's profile). Injected by all four `apps/backend/src/public-api/routes/v1/public.*.controller.ts`; see pitfall #8 in [`apps/backend/CLAUDE.md`](../../apps/backend/CLAUDE.md). |
 
 ## Common Workflows
 
