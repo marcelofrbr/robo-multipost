@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   HttpException,
+  NotFoundException,
   Param,
   Post,
   Put,
@@ -26,7 +27,9 @@ import { Organization } from '@prisma/client';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { GetPublicApiProfileId } from '@gitroom/nestjs-libraries/user/public.api.profile.from.request';
 import { FlowsService } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.service';
+import { DmFlowService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-flow.service';
 import {
+  DmBotConfigDto,
   QuickCreateFlowDto,
   UpdateFlowStatusDto,
 } from '@gitroom/nestjs-libraries/dtos/flows/flow.dto';
@@ -105,7 +108,10 @@ const FLOW_BODY_EXAMPLES = {
   })
 )
 export class PublicFlowsController {
-  constructor(private _flowsService: FlowsService) {}
+  constructor(
+    private _flowsService: FlowsService,
+    private _dmFlowService: DmFlowService
+  ) {}
 
   /**
    * Resolve o profileId efetivo respeitando a politica de chave por-perfil.
@@ -312,5 +318,165 @@ export class PublicFlowsController {
       profileId
     );
     return this._flowsService.deleteFlow(org.id, id, effectiveProfileId);
+  }
+  // --- Execucoes -----------------------------------------------------------
+
+  private async assertFlowInScope(
+    orgId: string,
+    flowId: string,
+    profileId?: string
+  ) {
+    const flow = await this._flowsService.getFlow(orgId, flowId, profileId);
+    if (!flow) {
+      throw new NotFoundException('Flow not found');
+    }
+    return flow;
+  }
+
+  @Get('/flows/:id/executions')
+  @ApiOperation({
+    summary: 'Histórico de execuções de uma automação',
+    description:
+      'Lista o que a automação fez (comentários respondidos, DMs enviados, erros). Paginado por `page`/`limit`.',
+  })
+  @ApiParam({ name: 'id', description: 'ID do flow' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  async listExecutions(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Param('id') id: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    await this.assertFlowInScope(org.id, id, publicApiProfileId);
+    return this._flowsService.getExecutions(
+      org.id,
+      id,
+      page ? Number(page) : undefined,
+      limit ? Number(limit) : undefined
+    );
+  }
+
+  @Get('/flows/:id/executions/:executionId')
+  @ApiOperation({ summary: 'Detalhar uma execução (com log)' })
+  @ApiParam({ name: 'id', description: 'ID do flow' })
+  @ApiParam({ name: 'executionId', description: 'ID da execução' })
+  async getExecution(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Param('id') id: string,
+    @Param('executionId') executionId: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    await this.assertFlowInScope(org.id, id, publicApiProfileId);
+    return this._flowsService.getExecution(org.id, executionId);
+  }
+
+  // --- Alvos (posts/stories) e webhook ------------------------------------
+
+  @Get('/flows/integrations/:integrationId/posts')
+  @ApiOperation({
+    summary: 'Posts do Instagram de um canal (para escolher o alvo da automação)',
+  })
+  @ApiParam({ name: 'integrationId', description: 'ID do canal Instagram' })
+  @ApiQuery({ name: 'profileId', required: false })
+  async listIntegrationPosts(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Param('integrationId') integrationId: string,
+    @Query('profileId') profileId?: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    const effectiveProfileId = this.resolveProfileId(
+      publicApiProfileId,
+      profileId
+    );
+    return this._flowsService.getInstagramPostsByIntegration(
+      org.id,
+      integrationId,
+      effectiveProfileId
+    );
+  }
+
+  @Get('/flows/integrations/:integrationId/stories')
+  @ApiOperation({ summary: 'Stories ativos do Instagram de um canal' })
+  @ApiParam({ name: 'integrationId', description: 'ID do canal Instagram' })
+  @ApiQuery({ name: 'profileId', required: false })
+  async listIntegrationStories(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Param('integrationId') integrationId: string,
+    @Query('profileId') profileId?: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    // Stories nao sao filtrados por perfil no service; a chamada abaixo so
+    // aplica a regra de escopo da chave (403 se pedir outro perfil).
+    this.resolveProfileId(publicApiProfileId, profileId);
+    return this._flowsService.getInstagramStoriesByIntegration(
+      org.id,
+      integrationId
+    );
+  }
+
+  @Get('/flows/integrations/:integrationId/webhook-status')
+  @ApiOperation({
+    summary: 'Diagnóstico do webhook da Meta para o canal',
+    description:
+      'Verifica se o app da Meta está assinado para comments/messages. `ok=false` explica o que falta.',
+  })
+  @ApiParam({ name: 'integrationId', description: 'ID do canal Instagram' })
+  async webhookStatus(
+    @GetOrgFromRequest() org: Organization,
+    @Param('integrationId') integrationId: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    return this._flowsService.checkIntegrationWebhook(org.id, integrationId);
+  }
+
+  // --- Bot de DM e escalações --------------------------------------------
+
+  @Post('/flows/dm/bot')
+  @ApiOperation({
+    summary: 'Ligar/desligar o bot de DM de um canal',
+    description:
+      'Cria ou atualiza o Flow do tipo direct_message. `enabled=true` liga (ACTIVE), `false` pausa.',
+  })
+  async configureDmBot(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Body() body: DmBotConfigDto
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    return this._flowsService.createOrUpdateDirectMessageBotFlow(
+      org.id,
+      body.integrationId,
+      { enabled: body.enabled, fallbackMessage: body.fallbackMessage },
+      publicApiProfileId
+    );
+  }
+
+  @Get('/flows/dm/escalations')
+  @ApiOperation({
+    summary: 'Conversas de DM escaladas para atendimento humano',
+  })
+  async listDmEscalations(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    return this._dmFlowService.listEscalations(org.id, publicApiProfileId);
+  }
+
+  @Post('/flows/dm/escalations/:id/resolve')
+  @ApiOperation({ summary: 'Marcar uma escalação de DM como resolvida' })
+  @ApiParam({ name: 'id', description: 'ID da conversa' })
+  async resolveDmEscalation(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    return this._dmFlowService.resolveConversation(org.id, id);
   }
 }
