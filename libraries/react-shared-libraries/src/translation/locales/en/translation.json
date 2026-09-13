@@ -837,6 +837,7 @@
   "media_filter_to": "To",
   "media_filter_clear": "Clear",
   "media_filter_no_results": "No media in this period",
+  "media_filter_invalid_range": "The start date must be on or before the end date",
   "media_library": "Media Library",
   "media_settings": "Media Settings",
   "media_editor": "Media Editor",

@@ -116,6 +116,14 @@ export const MediaDateFilter: FC<{
           {t('media_filter_clear', 'Clear')}
         </button>
       )}
+      {invalid && (
+        <div role="alert" className="basis-full text-[12px] text-red-400">
+          {t(
+            'media_filter_invalid_range',
+            'The start date must be on or before the end date'
+          )}
+        </div>
+      )}
     </div>
   );
 };

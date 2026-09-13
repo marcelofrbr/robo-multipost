@@ -214,27 +214,31 @@ export const MediaBox: FC<{
   closeModal: () => void;
 }> = ({ type, standalone, setMedia }) => {
   const [page, setPage] = useState(0);
+  // `dateRange` e o que o usuario digitou; `appliedRange` e o ultimo periodo
+  // valido, o unico que vai para a API. Um periodo invalido (De > Ate) mostra
+  // aviso nos campos e mantem o grid no ultimo resultado bom.
   const [dateRange, setDateRange] = useState<MediaDateRange>({});
+  const [appliedRange, setAppliedRange] = useState<MediaDateRange>({});
   const fetch = useFetch();
   const modals = useModals();
   const toaster = useToaster();
   // Trocar o filtro sempre volta para a primeira pagina.
   const changeDateRange = useCallback((range: MediaDateRange) => {
     setDateRange(range);
-    setPage(0);
+    if (isValidDateRange(range)) {
+      setAppliedRange(range);
+      setPage(0);
+    }
   }, []);
   const rangeQuery = useMemo(() => {
-    if (!isValidDateRange(dateRange)) {
-      return '';
-    }
-    const iso = toIsoRange(dateRange, getTimezone());
+    const iso = toIsoRange(appliedRange, getTimezone());
     const params = new URLSearchParams();
     if (iso.from) params.set('from', iso.from);
     if (iso.to) params.set('to', iso.to);
     const query = params.toString();
     return query ? `&${query}` : '';
-  }, [dateRange]);
-  const hasDateFilter = !!dateRange.from || !!dateRange.to;
+  }, [appliedRange]);
+  const hasDateFilter = !!appliedRange.from || !!appliedRange.to;
   const loadMedia = useCallback(async () => {
     return (await fetch(`/media?page=${page + 1}${rangeQuery}`)).json();
   }, [page, rangeQuery]);

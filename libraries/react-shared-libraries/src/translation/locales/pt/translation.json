@@ -836,6 +836,7 @@
   "media_filter_to": "Até",
   "media_filter_clear": "Limpar",
   "media_filter_no_results": "Nenhuma mídia neste período",
+  "media_filter_invalid_range": "A data inicial deve ser igual ou anterior à data final",
   "media_library": "Biblioteca de Mídia",
   "media_settings": "Configurações de Mídia",
   "media_editor": "Editor de Mídia",
