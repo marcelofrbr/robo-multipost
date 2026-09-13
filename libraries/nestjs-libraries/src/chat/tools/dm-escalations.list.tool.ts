@@ -3,6 +3,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { Injectable } from '@nestjs/common';
 import { DmRepository } from '@gitroom/nestjs-libraries/database/prisma/dm/dm.repository';
+import { DmFlowService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-flow.service';
 import {
   getAuth,
   getProfileId,
@@ -57,6 +58,39 @@ export class DmEscalationsListTool implements AgentToolInterface {
               : undefined,
           })),
         };
+      },
+    });
+  }
+}
+
+/**
+ * Marca uma conversa escalada como resolvida — POST /flows/dm/escalations/:id/resolve.
+ * Passa pelo DmFlowService (404 fora do escopo do perfil).
+ */
+@Injectable()
+export class ResolveDmEscalationTool implements AgentToolInterface {
+  constructor(private _dmFlowService: DmFlowService) {}
+  name = 'resolveDmEscalation';
+
+  run() {
+    return createTool({
+      id: 'resolveDmEscalation',
+      description:
+        'Marca uma conversa de DM escalada como resolvida (fecha o atendimento ' +
+        'humano). Use listDmEscalations para o id da conversa.',
+      inputSchema: z.object({ conversationId: z.string() }),
+      outputSchema: z.object({ id: z.string(), status: z.string() }),
+      execute: async (input: any) => {
+        const org = getAuth<{ id: string }>();
+        if (!org?.id) {
+          throw new Error('MCP: organizacao ausente no contexto');
+        }
+        const r: any = await this._dmFlowService.resolveConversation(
+          org.id,
+          input.conversationId,
+          getProfileId()
+        );
+        return { id: r.id, status: String(r.status) };
       },
     });
   }
