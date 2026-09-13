@@ -1,7 +1,27 @@
 jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({}));
 jest.mock('@sentry/nestjs', () => ({ metrics: { count: jest.fn() } }));
 
+import { HttpException, NotFoundException } from '@nestjs/common';
 import { PublicPostsController } from './public.posts.controller';
+
+// Mock do PublicApiScopeService com a mesma regra do service real (403 para
+// chave de perfil divergente; 404 para chave de org com perfil desconhecido).
+const makeScope = (profileKnown = true) => ({
+  resolveProfileId: jest.fn(
+    async (_orgId: string, pub?: string, req?: string) => {
+      if (pub && req && req !== pub) {
+        throw new HttpException(
+          { msg: 'Profile key cannot access another profile' },
+          403
+        );
+      }
+      if (!pub && req && !profileKnown) {
+        throw new NotFoundException('Profile not found');
+      }
+      return pub ?? req;
+    }
+  ),
+});
 
 const makePostsService = () => ({
   getPostInScope: jest.fn(),
@@ -23,7 +43,7 @@ describe('PublicPostsController', () => {
   beforeEach(() => {
     posts = makePostsService();
     orgs = makeOrgService();
-    controller = new PublicPostsController(posts as any, orgs as any);
+    controller = new PublicPostsController(posts as any, orgs as any, makeScope() as any);
   });
 
   it('chave por-perfil: lanca 403 ao pedir outro profileId', async () => {
@@ -40,6 +60,29 @@ describe('PublicPostsController', () => {
     expect(posts.getPostInScope).toHaveBeenCalledWith('org-1', 'p1', 'prof-1');
     expect(posts.getPost).toHaveBeenCalledWith('org-1', 'p1');
     expect(r).toEqual({ group: 'g1', posts: [{ id: 'p1' }] });
+  });
+
+  it('GET /posts/:id e /posts/group/:group nunca expoem token/refreshToken do canal', async () => {
+    const integration = { id: 'int-1', name: 'IG', token: 'SEGREDO', refreshToken: 'SEGREDO2', internalId: 'x' };
+    posts.getPostInScope.mockResolvedValue({ id: 'p1' });
+    posts.getGroupInScope.mockResolvedValue([{ id: 'p1' }]);
+    posts.getPost.mockResolvedValue({ group: 'g1', posts: [{ id: 'p1', integration }] });
+    posts.getPostsByGroup.mockResolvedValue({ group: 'g1', posts: [{ id: 'p1', integration }] });
+
+    const one: any = await controller.getPost(org, 'prof-1', 'p1', undefined);
+    const grp: any = await controller.getPostsByGroup(org, 'prof-1', 'g1', undefined);
+
+    for (const payload of [one, grp]) {
+      expect(payload.posts[0].integration).toEqual({ id: 'int-1', name: 'IG' });
+      expect(JSON.stringify(payload)).not.toContain('SEGREDO');
+    }
+  });
+
+  it('chave de org com ?profileId de outra organizacao -> 404 antes de tocar o service', async () => {
+    controller = new PublicPostsController(posts as any, orgs as any, makeScope(false) as any);
+
+    await expect(controller.getPost(org, undefined, 'p1', 'prof-de-outra-org')).rejects.toMatchObject({ status: 404 });
+    expect(posts.getPostInScope).not.toHaveBeenCalled();
   });
 
   it('GET /posts/:id propaga 404 do escopo sem chamar getPost', async () => {

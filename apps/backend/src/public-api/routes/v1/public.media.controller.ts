@@ -21,10 +21,12 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { IsOptional, IsString } from 'class-validator';
+import { Throttle } from '@nestjs/throttler';
 import { Organization } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { GetPublicApiProfileId } from '@gitroom/nestjs-libraries/user/public.api.profile.from.request';
+import { PublicApiScopeService } from '@gitroom/nestjs-libraries/services/public-api-scope.service';
 import { MediaService } from '@gitroom/nestjs-libraries/database/prisma/media/media.service';
 import { GetMediaQueryDto } from '@gitroom/nestjs-libraries/dtos/media/get-media.query.dto';
 import { SaveMediaInformationDto } from '@gitroom/nestjs-libraries/dtos/media/save.media.information.dto';
@@ -55,24 +57,11 @@ export class PublicGetMediaQueryDto extends GetMediaQueryDto {
   })
 )
 export class PublicMediaController {
-  constructor(private _mediaService: MediaService) {}
+  constructor(
+    private _mediaService: MediaService,
+    private _scope: PublicApiScopeService
+  ) {}
 
-  private resolveProfileId(
-    publicApiProfileId: string | undefined,
-    requestedProfileId?: string
-  ) {
-    if (
-      publicApiProfileId &&
-      requestedProfileId &&
-      requestedProfileId !== publicApiProfileId
-    ) {
-      throw new HttpException(
-        { msg: 'Profile key cannot access another profile' },
-        403
-      );
-    }
-    return publicApiProfileId ?? requestedProfileId;
-  }
 
   @Get('/media')
   @ApiOperation({
@@ -91,7 +80,7 @@ export class PublicMediaController {
     @Query() query: PublicGetMediaQueryDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = this.resolveProfileId(publicApiProfileId, query.profileId);
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, publicApiProfileId, query.profileId);
     return this._mediaService.getMedia(org.id, query.page ?? 1, effectiveProfileId, {
       from: query.from,
       to: query.to,
@@ -104,6 +93,7 @@ export class PublicMediaController {
   @ApiQuery({ name: 'profileId', required: false })
   @ApiResponse({ status: 403, description: 'Mídia de outro perfil' })
   @ApiResponse({ status: 404, description: 'Mídia inexistente' })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async deleteMedia(
     @GetOrgFromRequest() org: Organization,
     @GetPublicApiProfileId() publicApiProfileId: string | undefined,
@@ -111,7 +101,7 @@ export class PublicMediaController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = this.resolveProfileId(publicApiProfileId, profileId);
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, publicApiProfileId, profileId);
     await this._mediaService.getMediaInScope(org.id, id, effectiveProfileId);
     return this._mediaService.deleteMedia(org.id, id, effectiveProfileId);
   }
@@ -122,6 +112,7 @@ export class PublicMediaController {
   @ApiBody({ type: SaveMediaInformationDto })
   @ApiResponse({ status: 403, description: 'Mídia de outro perfil' })
   @ApiResponse({ status: 404, description: 'Mídia inexistente' })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async saveMediaInformation(
     @GetOrgFromRequest() org: Organization,
     @GetPublicApiProfileId() publicApiProfileId: string | undefined,
@@ -129,8 +120,12 @@ export class PublicMediaController {
     @Body() body: SaveMediaInformationDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = this.resolveProfileId(publicApiProfileId, profileId);
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, publicApiProfileId, profileId);
     await this._mediaService.getMediaInScope(org.id, body.id, effectiveProfileId);
-    return this._mediaService.saveMediaInformation(org.id, body);
+    return this._mediaService.saveMediaInformation(
+      org.id,
+      body,
+      effectiveProfileId
+    );
   }
 }

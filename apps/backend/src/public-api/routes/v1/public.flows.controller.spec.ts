@@ -4,7 +4,26 @@ jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({
 jest.mock('@sentry/nestjs', () => ({ metrics: { count: jest.fn() } }));
 
 import { PublicFlowsController } from './public.flows.controller';
-import { HttpException } from '@nestjs/common';
+import { HttpException, NotFoundException } from '@nestjs/common';
+
+// Mock do PublicApiScopeService com a mesma regra do service real (403 para
+// chave de perfil divergente; 404 para chave de org com perfil desconhecido).
+const makeScope = (profileKnown = true) => ({
+  resolveProfileId: jest.fn(
+    async (_orgId: string, pub?: string, req?: string) => {
+      if (pub && req && req !== pub) {
+        throw new HttpException(
+          { msg: 'Profile key cannot access another profile' },
+          403
+        );
+      }
+      if (!pub && req && !profileKnown) {
+        throw new NotFoundException('Profile not found');
+      }
+      return pub ?? req;
+    }
+  ),
+});
 import { FlowStatus } from '@prisma/client';
 
 const makeFlowsService = () => ({
@@ -40,7 +59,8 @@ describe('PublicFlowsController', () => {
     dmFlowService = makeDmFlowService();
     controller = new PublicFlowsController(
       flowsService as any,
-      dmFlowService as any
+      dmFlowService as any,
+      makeScope() as any
     );
   });
 

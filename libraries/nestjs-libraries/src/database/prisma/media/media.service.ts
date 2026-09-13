@@ -194,8 +194,12 @@ export class MediaService {
     return this._mediaRepository.getMediaStats(org, profileId);
   }
 
-  saveMediaInformation(org: string, data: SaveMediaInformationDto) {
-    return this._mediaRepository.saveMediaInformation(org, data);
+  saveMediaInformation(
+    org: string,
+    data: SaveMediaInformationDto,
+    profileId?: string
+  ) {
+    return this._mediaRepository.saveMediaInformation(org, data, profileId);
   }
 
   getVideoOptions() {

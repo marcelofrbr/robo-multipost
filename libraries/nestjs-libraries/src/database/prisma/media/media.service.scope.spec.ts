@@ -64,3 +64,15 @@ describe('MediaService.getMediaInScope', () => {
     ).rejects.toMatchObject({ status: 403 });
   });
 });
+
+describe('MediaService.saveMediaInformation', () => {
+  it('repassa o profileId ao repositorio', async () => {
+    const repo = createMock<MediaRepository>();
+    repo.saveMediaInformation.mockResolvedValue({ id: 'm1' } as any);
+    const body = { id: 'm1', alt: 'x' } as any;
+
+    await buildService(repo).saveMediaInformation('org-1', body, 'prof-1');
+
+    expect(repo.saveMediaInformation).toHaveBeenCalledWith('org-1', body, 'prof-1');
+  });
+});

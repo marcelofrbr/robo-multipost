@@ -181,7 +181,7 @@ describe('MediaRepository.getMedia', () => {
 });
 
 describe('MediaRepository.getMediaForOrg', () => {
-  it('busca por id + org, sem apagadas, e com OR perfil/null quando ha profileId', async () => {
+  it('busca por id + org, sem apagadas (o perfil e decidido no service para separar 404 de 403)', async () => {
     const prisma = createPrismaRepositoryMock('media');
     prisma.model.media.findFirst.mockResolvedValue(null as any);
     const repo = new MediaRepository(prisma as any);
@@ -190,15 +190,29 @@ describe('MediaRepository.getMediaForOrg', () => {
     expect(prisma.model.media.findFirst).toHaveBeenCalledWith({
       where: { id: 'm1', organizationId: 'org-1', deletedAt: null },
     });
+  });
+});
 
-    await repo.getMediaForOrg('org-1', 'm1', 'prof-1');
-    expect(prisma.model.media.findFirst).toHaveBeenLastCalledWith({
-      where: {
-        id: 'm1',
-        organizationId: 'org-1',
-        deletedAt: null,
-        OR: [{ profileId: 'prof-1' }, { profileId: null }],
-      },
-    });
+describe('MediaRepository.saveMediaInformation', () => {
+  it('com profileId restringe ao perfil ou a midia compartilhada (espelha deleteMedia)', async () => {
+    const prisma = createPrismaRepositoryMock('media');
+    prisma.model.media.update.mockResolvedValue({ id: 'm1' } as any);
+    const repo = new MediaRepository(prisma as any);
+
+    await repo.saveMediaInformation('org-1', { id: 'm1', alt: 'x' } as any, 'prof-1');
+    expect(prisma.model.media.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'm1',
+          organizationId: 'org-1',
+          OR: [{ profileId: 'prof-1' }, { profileId: null }],
+        },
+      })
+    );
+
+    await repo.saveMediaInformation('org-1', { id: 'm1', alt: 'x' } as any);
+    expect(prisma.model.media.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { id: 'm1', organizationId: 'org-1' } })
+    );
   });
 });

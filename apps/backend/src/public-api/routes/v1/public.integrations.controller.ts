@@ -27,6 +27,7 @@ import { pricing } from '@gitroom/nestjs-libraries/database/prisma/subscriptions
 import { UpdateIntegrationSettingsDto } from '@gitroom/nestjs-libraries/dtos/integrations/update.integration.settings.dto';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { GetPublicApiProfileId } from '@gitroom/nestjs-libraries/user/public.api.profile.from.request';
+import { PublicApiScopeService } from '@gitroom/nestjs-libraries/services/public-api-scope.service';
 import { Organization } from '@prisma/client';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { CheckPolicies } from '@gitroom/backend/services/auth/permissions/permissions.ability';
@@ -64,26 +65,10 @@ export class PublicIntegrationsController {
     private _mediaService: MediaService,
     private _notificationService: NotificationService,
     private _integrationManager: IntegrationManager,
-    private _refreshIntegrationService: RefreshIntegrationService
+    private _refreshIntegrationService: RefreshIntegrationService,
+    private _scope: PublicApiScopeService
   ) {}
 
-  /** Chave por-perfil so opera no proprio perfil (`?profileId` divergente -> 403). */
-  private resolveProfileId(
-    publicApiProfileId: string | undefined,
-    requestedProfileId?: string
-  ) {
-    if (
-      publicApiProfileId &&
-      requestedProfileId &&
-      requestedProfileId !== publicApiProfileId
-    ) {
-      throw new HttpException(
-        { msg: 'Profile key cannot access another profile' },
-        403
-      );
-    }
-    return publicApiProfileId ?? requestedProfileId;
-  }
 
   @Post('/upload')
   @UseInterceptors(FileInterceptor('file'))
@@ -143,7 +128,7 @@ export class PublicIntegrationsController {
   ) {
     Sentry.metrics.count('public_api-request', 1);
     // Chave de perfil ve so os posts do perfil (mesma regra do dashboard).
-    const effectiveProfileId = this.resolveProfileId(
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
       publicApiProfileId,
       query.profileId
     );
@@ -180,6 +165,7 @@ export class PublicIntegrationsController {
 
   @Delete('/posts/:id')
   @ApiResponse({ status: 404, description: 'Post fora do seu escopo' })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async deletePost(
     @GetOrgFromRequest() org: Organization,
     @GetPublicApiProfileId() publicApiProfileId: string | undefined,
@@ -196,6 +182,7 @@ export class PublicIntegrationsController {
 
   @Delete('/posts/group/:group')
   @ApiResponse({ status: 404, description: 'Grupo fora do seu escopo' })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async deletePostByGroup(
     @GetOrgFromRequest() org: Organization,
     @GetPublicApiProfileId() publicApiProfileId: string | undefined,
@@ -219,7 +206,7 @@ export class PublicIntegrationsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = this.resolveProfileId(
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
       publicApiProfileId,
       profileId
     );
@@ -253,7 +240,7 @@ export class PublicIntegrationsController {
   ) {
     Sentry.metrics.count('public_api-request', 1);
     // Fora do try: 403 nao pode virar o 500 generico do catch abaixo.
-    const effectiveProfileId = this.resolveProfileId(
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
       publicApiProfileId,
       profileId
     );
@@ -361,7 +348,7 @@ export class PublicIntegrationsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = this.resolveProfileId(
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
       publicApiProfileId,
       profileId
     );
@@ -394,7 +381,7 @@ export class PublicIntegrationsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = this.resolveProfileId(
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
       publicApiProfileId,
       profileId
     );
@@ -433,7 +420,7 @@ export class PublicIntegrationsController {
     @Body() body: UpdateIntegrationSettingsDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = this.resolveProfileId(
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
       publicApiProfileId,
       profileId
     );

@@ -24,10 +24,12 @@ import { Organization } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { GetPublicApiProfileId } from '@gitroom/nestjs-libraries/user/public.api.profile.from.request';
+import { PublicApiScopeService } from '@gitroom/nestjs-libraries/services/public-api-scope.service';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.service';
 import { ChangePostDateDto } from '@gitroom/nestjs-libraries/dtos/posts/change.post.date.dto';
 import { CreatePostCommentDto } from '@gitroom/nestjs-libraries/dtos/posts/create.post.comment.dto';
+import { toPublicPostPayload } from '@gitroom/nestjs-libraries/database/prisma/posts/public.post.mapper';
 
 /**
  * Posts na API publica: detalhe, grupo, estatisticas, data e comentario.
@@ -48,26 +50,10 @@ import { CreatePostCommentDto } from '@gitroom/nestjs-libraries/dtos/posts/creat
 export class PublicPostsController {
   constructor(
     private _postsService: PostsService,
-    private _organizationService: OrganizationService
+    private _organizationService: OrganizationService,
+    private _scope: PublicApiScopeService
   ) {}
 
-  /** Chave por-perfil so opera no proprio perfil (`?profileId` divergente -> 403). */
-  private resolveProfileId(
-    publicApiProfileId: string | undefined,
-    requestedProfileId?: string
-  ) {
-    if (
-      publicApiProfileId &&
-      requestedProfileId &&
-      requestedProfileId !== publicApiProfileId
-    ) {
-      throw new HttpException(
-        { msg: 'Profile key cannot access another profile' },
-        403
-      );
-    }
-    return publicApiProfileId ?? requestedProfileId;
-  }
 
   @Get('/posts/group/:group')
   @ApiOperation({ summary: 'Todos os posts de um grupo (publicação multi-canal)' })
@@ -81,9 +67,12 @@ export class PublicPostsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = this.resolveProfileId(publicApiProfileId, profileId);
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, publicApiProfileId, profileId);
     await this._postsService.getGroupInScope(org.id, group, effectiveProfileId);
-    return this._postsService.getPostsByGroup(org.id, group);
+    // Nunca devolver token/refreshToken do canal embutido no post.
+    return toPublicPostPayload(
+      await this._postsService.getPostsByGroup(org.id, group)
+    );
   }
 
   @Get('/posts/:id/statistics')
@@ -98,7 +87,7 @@ export class PublicPostsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = this.resolveProfileId(publicApiProfileId, profileId);
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, publicApiProfileId, profileId);
     await this._postsService.getPostInScope(org.id, id, effectiveProfileId);
     return this._postsService.getStatistics(org.id, id);
   }
@@ -115,9 +104,10 @@ export class PublicPostsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = this.resolveProfileId(publicApiProfileId, profileId);
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, publicApiProfileId, profileId);
     await this._postsService.getPostInScope(org.id, id, effectiveProfileId);
-    return this._postsService.getPost(org.id, id);
+    // Nunca devolver token/refreshToken do canal embutido no post.
+    return toPublicPostPayload(await this._postsService.getPost(org.id, id));
   }
 
   @Put('/posts/:id/date')
@@ -139,7 +129,7 @@ export class PublicPostsController {
     @Body() body: ChangePostDateDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = this.resolveProfileId(publicApiProfileId, profileId);
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, publicApiProfileId, profileId);
     await this._postsService.getPostInScope(org.id, id, effectiveProfileId);
     return this._postsService.changeDate(
       org.id,
@@ -169,7 +159,7 @@ export class PublicPostsController {
     @Body() body: CreatePostCommentDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = this.resolveProfileId(publicApiProfileId, profileId);
+    const effectiveProfileId = await this._scope.resolveProfileId(org.id, publicApiProfileId, profileId);
     await this._postsService.getPostInScope(org.id, id, effectiveProfileId);
     const ownerId = await this._organizationService.getOwnerUserId(org.id);
     return this._postsService.createComment(org.id, ownerId, id, body.comment);

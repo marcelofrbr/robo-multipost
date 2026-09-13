@@ -21,6 +21,8 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ### Segurança
 
+- **Posts da API pública não expõem mais os tokens do canal.** `GET /posts/:id` e `GET /posts/group/:group` devolviam o registro completo do canal embutido em cada post — incluindo `token`/`refreshToken` do OAuth. Agora só saem campos de exibição (`id`, `name`, `picture`, `providerIdentifier`, `disabled`, `profileId`), a mesma lista de `GET /integrations`.
+- **Chave de organização não consegue mais apontar um `?profileId` de outra organização.** A regra de escopo da API pública passou a ser um único serviço (`PublicApiScopeService`) usado por todas as rotas: chave de perfil só opera no próprio perfil (403) e chave de organização com `?profileId` precisa de um perfil da própria organização (404). Antes, um id de perfil alheio poderia ser gravado ao criar automação ou ao conectar canal por OAuth.
 - **`POST /integrations/zernio/connect-account` valida a conta no Zernio antes de criar o canal.** O endpoint aceitava `accountId`, `username` e `displayName` do cliente sem conferir; como o retorno do OAuth do Zernio chega por query params (sem `state`), um link forjado aberto por um usuário logado poderia criar um canal com nome falso apontando para uma conta que não é dele. Agora o backend consulta `listAccounts` do perfil Zernio informado **com a chave do próprio usuário**, exige que o `accountId` esteja na lista e que a plataforma confira, e grava nome/username vindos do Zernio — `username`/`displayName` do body passam a ser ignorados. Pior caso de um link forjado: vincular uma conta Zernio que já é do próprio usuário (o mesmo que um clique no modal faria).
 
 ## [0.5.6] - 2026-09-09

@@ -17,7 +17,7 @@ Guia irmão: [Automações e DM](automacoes-e-dm.md).
 |---|---|
 | `GET /posts?startDate=&endDate=` | Posts do calendário no período (ISO 8601). Chave de perfil vê só os do perfil |
 | `POST /posts` | Cria **ou edita**: reenviar com o mesmo `group` e `posts[].value[].id` atualiza os posts em vez de criar (o `id` de cada item é a chave do upsert) |
-| `GET /posts/:id` | Post completo — grupo, mídias e comentários encadeados |
+| `GET /posts/:id` | Post completo — grupo, mídias e comentários encadeados. O `integration` embutido traz só `id`, `name`, `picture`, `providerIdentifier`, `disabled`, `profileId` (nunca tokens) |
 | `GET /posts/group/:group` | Todos os posts de uma publicação multi-canal |
 | `GET /posts/:id/statistics` | Cliques nos links encurtados do post |
 | `PUT /posts/:id/date` `{ "date", "action"? }` | Muda a data. `action=schedule` (padrão) reagenda e volta para a fila; `update` só troca a data |
@@ -95,8 +95,8 @@ Segredos e administração (chave Zernio, credenciais Meta/IA, membros, criaçã
 | 401 | Sem chave ou chave inválida |
 | 400 | Corpo inválido — campo desconhecido, data fora do ISO 8601, `action` inválida, `additionalSettings` que não é um array JSON |
 | 403 | Chave de perfil pedindo outro perfil; mídia ou canal de outro perfil |
-| 404 | Post/grupo fora do seu escopo; mídia ou canal inexistente |
+| 404 | Post/grupo fora do seu escopo; mídia ou canal inexistente; chave de organização com `?profileId` que não é desta organização |
 | 412 | Organização sem membros (comentário) |
-| 429 | Limites: 60/min para mudar data e comentar; 30/hora para ativar, desativar e configurar canal |
+| 429 | Limites: 60/min para mudar data, comentar, apagar posts e apagar/editar mídia; 30/hora para ativar, desativar e configurar canal |
 
 Todas as rotas também aparecem na documentação interativa: `https://<seu-dominio>/api/docs` (Swagger, seções **Posts**, **Mídia** e **Public API**) — clique em **Authorize** e cole a chave de API.

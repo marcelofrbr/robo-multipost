@@ -14,6 +14,7 @@ import { PublicFlowsController } from '@gitroom/backend/public-api/routes/v1/pub
 import { PublicPostsController } from '@gitroom/backend/public-api/routes/v1/public.posts.controller';
 import { PublicMediaController } from '@gitroom/backend/public-api/routes/v1/public.media.controller';
 import { PublicAuthMiddleware } from '@gitroom/backend/services/auth/public.auth.middleware';
+import { PublicApiScopeService } from '@gitroom/nestjs-libraries/services/public-api-scope.service';
 
 // Alimenta `controllers` E `PublicAuthMiddleware.forRoutes`: controller fora
 // desta lista fica sem autenticacao ou responde 404.
@@ -36,6 +37,7 @@ const authenticatedController = [
     PermissionsService,
     CodesService,
     IntegrationManager,
+    PublicApiScopeService,
   ],
   get exports() {
     return [...this.imports, ...this.providers];

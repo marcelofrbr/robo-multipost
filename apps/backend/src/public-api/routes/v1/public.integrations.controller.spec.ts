@@ -1,4 +1,4 @@
-import { HttpException } from '@nestjs/common';
+import { HttpException, NotFoundException } from '@nestjs/common';
 
 jest.mock('./public.integrations.controller', () => {
   const actual = jest.requireActual('./public.integrations.controller');
@@ -13,6 +13,25 @@ jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({
 jest.mock('nostr-tools', () => ({}));
 
 import { PublicIntegrationsController } from './public.integrations.controller';
+
+// Mock do PublicApiScopeService com a mesma regra do service real (403 para
+// chave de perfil divergente; 404 para chave de org com perfil desconhecido).
+const makeScope = (profileKnown = true) => ({
+  resolveProfileId: jest.fn(
+    async (_orgId: string, pub?: string, req?: string) => {
+      if (pub && req && req !== pub) {
+        throw new HttpException(
+          { msg: 'Profile key cannot access another profile' },
+          403
+        );
+      }
+      if (!pub && req && !profileKnown) {
+        throw new NotFoundException('Profile not found');
+      }
+      return pub ?? req;
+    }
+  ),
+});
 
 const makeIntegrationService = () => ({
   getIntegrationsList: jest.fn().mockResolvedValue([]),
@@ -30,7 +49,8 @@ describe('PublicIntegrationsController - listIntegration', () => {
       {} as any,
       {} as any,
       {} as any,
-      {} as any
+      {} as any,
+      makeScope() as any
     );
   });
 
@@ -76,7 +96,8 @@ describe('PublicIntegrationsController - uploadSimple', () => {
       mediaService as any,
       {} as any,
       {} as any,
-      {} as any
+      {} as any,
+      makeScope() as any
     );
     (controller as any).storage = {
       uploadFile: jest.fn().mockResolvedValue({
@@ -119,7 +140,8 @@ describe('PublicIntegrationsController - createPost', () => {
       {} as any,
       {} as any,
       {} as any,
-      {} as any
+      {} as any,
+      makeScope() as any
     );
   });
 
@@ -164,7 +186,8 @@ describe('PublicIntegrationsController - uploadsFromUrl', () => {
       mediaService as any,
       {} as any,
       {} as any,
-      {} as any
+      {} as any,
+      makeScope() as any
     );
   });
 
@@ -220,7 +243,8 @@ describe('PublicIntegrationsController - canais e escopo de perfil em posts (ent
       {} as any,
       {} as any,
       {} as any,
-      {} as any
+      {} as any,
+      makeScope() as any
     );
   });
 

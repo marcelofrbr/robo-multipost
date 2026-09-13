@@ -1,7 +1,27 @@
 jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({}));
 jest.mock('@sentry/nestjs', () => ({ metrics: { count: jest.fn() } }));
 
+import { HttpException, NotFoundException } from '@nestjs/common';
 import { PublicMediaController } from './public.media.controller';
+
+// Mock do PublicApiScopeService com a mesma regra do service real (403 para
+// chave de perfil divergente; 404 para chave de org com perfil desconhecido).
+const makeScope = (profileKnown = true) => ({
+  resolveProfileId: jest.fn(
+    async (_orgId: string, pub?: string, req?: string) => {
+      if (pub && req && req !== pub) {
+        throw new HttpException(
+          { msg: 'Profile key cannot access another profile' },
+          403
+        );
+      }
+      if (!pub && req && !profileKnown) {
+        throw new NotFoundException('Profile not found');
+      }
+      return pub ?? req;
+    }
+  ),
+});
 
 const makeMediaService = () => ({
   getMedia: jest.fn(),
@@ -17,7 +37,7 @@ describe('PublicMediaController', () => {
 
   beforeEach(() => {
     media = makeMediaService();
-    controller = new PublicMediaController(media as any);
+    controller = new PublicMediaController(media as any, makeScope() as any);
   });
 
   it('GET /media lista com pagina padrao 1, perfil da chave e periodo', async () => {
@@ -60,7 +80,7 @@ describe('PublicMediaController', () => {
     const r = await controller.saveMediaInformation(org, 'prof-1', undefined, body);
 
     expect(media.getMediaInScope).toHaveBeenCalledWith('org-1', 'm1', 'prof-1');
-    expect(media.saveMediaInformation).toHaveBeenCalledWith('org-1', body);
+    expect(media.saveMediaInformation).toHaveBeenCalledWith('org-1', body, 'prof-1');
     expect(r).toEqual({ id: 'm1', alt: 'x' });
   });
 });
