@@ -78,6 +78,32 @@ export class ZernioIntegrationsController {
     return zernioApiKey;
   }
 
+  private async listZernioAccounts(
+    apiKey: string,
+    zernioProfileId: string
+  ): Promise<any[]> {
+    const zernio = new Zernio({ apiKey });
+    const { data, error } = await zernio.accounts.listAccounts({
+      query: { profileId: zernioProfileId },
+    });
+    if (error) {
+      throw new HttpException('Failed to fetch Zernio accounts', 500);
+    }
+
+    return data?.accounts || [];
+  }
+
+  private async findZernioAccount(
+    apiKey: string,
+    zernioProfileId: string,
+    accountId: string
+  ): Promise<
+    { platform: string; username?: string; displayName?: string } | undefined
+  > {
+    const accounts = await this.listZernioAccounts(apiKey, zernioProfileId);
+    return accounts.find((a: any) => a._id === accountId);
+  }
+
   @Get('/profiles')
   @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
   async getZernioProfiles(
@@ -113,17 +139,10 @@ export class ZernioIntegrationsController {
     }
 
     const apiKey = await this.getZernioApiKey(org, profile);
-    const zernio = new Zernio({ apiKey });
-
-    const { data, error } = await zernio.accounts.listAccounts({
-      query: { profileId: zernioProfileId },
-    });
-    if (error) {
-      throw new HttpException('Failed to fetch Zernio accounts', 500);
-    }
+    const accounts = await this.listZernioAccounts(apiKey, zernioProfileId);
 
     return {
-      accounts: (data?.accounts || []).map((a: any) => ({
+      accounts: accounts.map((a: any) => ({
         _id: a._id,
         platform: a.platform,
         username: a.username,
@@ -144,11 +163,12 @@ export class ZernioIntegrationsController {
       zernioProfileId: string;
       accountId: string;
       platform: string;
-      username: string;
-      displayName: string;
+      // Ignored: identity comes from Zernio (see findZernioAccount below).
+      username?: string;
+      displayName?: string;
     }
   ) {
-    const { zernioProfileId, accountId, platform, username, displayName } = body;
+    const { zernioProfileId, accountId, platform } = body;
 
     if (!SUPPORTED_ZERNIO_PLATFORMS.includes(platform)) {
       throw new HttpException(`Unsupported platform: ${platform}`, 400);
@@ -158,9 +178,38 @@ export class ZernioIntegrationsController {
       throw new HttpException('accountId and platform are required', 400);
     }
 
+    if (!zernioProfileId) {
+      throw new HttpException('zernioProfileId is required', 400);
+    }
+
     const apiKey = await this.getZernioApiKey(org, profile);
+
+    // Never trust the body for identity: the account must exist in the caller's
+    // own Zernio profile (looked up with the caller's key), and its name/platform
+    // come from Zernio. The OAuth return from "connect new account" carries these
+    // values as plain query params, so a crafted link could otherwise create a
+    // mislabeled channel for an account the user does not own.
+    const account = await this.findZernioAccount(
+      apiKey,
+      zernioProfileId,
+      accountId
+    );
+    if (!account) {
+      throw new HttpException(
+        'Account not found in the selected Zernio profile',
+        400
+      );
+    }
+    if (account.platform !== platform) {
+      throw new HttpException(
+        `Account platform mismatch: expected ${platform}, got ${account.platform}`,
+        400
+      );
+    }
+
+    const username = account.username || '';
     const providerIdentifier = `zernio-${platform}`;
-    const name = displayName || username || `${platform} Account`;
+    const name = account.displayName || username || `${platform} Account`;
 
     // Zernio SDK doesn't provide profile pictures for accounts.
     // Use the platform icon as fallback so the integration doesn't show a blank avatar.

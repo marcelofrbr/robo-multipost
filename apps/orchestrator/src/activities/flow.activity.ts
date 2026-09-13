@@ -6,7 +6,11 @@ import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/in
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { InstagramMessagingService } from '@gitroom/nestjs-libraries/integrations/social/instagram-messaging.service';
 import { resolveIgRoute } from '@gitroom/nestjs-libraries/integrations/social/instagram-route.resolver';
-import { FlowExecutionStatus } from '@prisma/client';
+import { DmRepository } from '@gitroom/nestjs-libraries/database/prisma/dm/dm.repository';
+import { DmBotService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-bot.service';
+import { isOutsideDmWindow } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-window.helper';
+import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
+import { DmConversationStatus, FlowExecutionStatus } from '@prisma/client';
 import type { InstagramProvider } from '@gitroom/nestjs-libraries/integrations/social/instagram.provider';
 import type { InstagramDmButton } from '@gitroom/nestjs-libraries/integrations/social/instagram-dm-button.type';
 
@@ -14,6 +18,9 @@ const GATE_FALLBACK_MESSAGE =
   'Olá! Esse conteúdo é exclusivo para seguidores. Me segue aqui e clica no botão abaixo 💙';
 const GATE_EXHAUSTED_MESSAGE =
   'Não consegui confirmar que você está seguindo. Tente novamente mais tarde 😉';
+
+const DM_HANDOFF_FALLBACK_MESSAGE =
+  'Vou te conectar com um atendente humano, ja respondo.';
 
 @Injectable()
 @Activity()
@@ -25,7 +32,10 @@ export class FlowActivity {
     private _integrationService: IntegrationService,
     private _integrationManager: IntegrationManager,
     private _instagramMessagingService: InstagramMessagingService,
-    private _unmatchedCommentService: UnmatchedCommentService
+    private _unmatchedCommentService: UnmatchedCommentService,
+    private _dmRepository: DmRepository,
+    private _dmBotService: DmBotService,
+    private _notificationService: NotificationService
   ) {}
 
   private resolveIgRoute(integration: {
@@ -551,5 +561,185 @@ export class FlowActivity {
       `enrichUnmatchedComment: iniciando id=${unmatchedCommentId}`
     );
     await this._unmatchedCommentService.enrich(unmatchedCommentId);
+  }
+
+  // --- Atendimento por DM (bot conversacional) ---
+
+  /**
+   * Gera a resposta do bot para a ultima mensagem do usuario na conversa.
+   * O userMessage e derivado do historico (mensagem role='user' mais
+   * recente), nao recebido por parametro — assim a activity e o workflow
+   * ficam consistentes e robustos a re-execucoes.
+   */
+  @ActivityMethod()
+  async generateDmReply(input: {
+    conversationId: string;
+    orgId: string;
+    profileId?: string;
+    integrationId: string;
+  }): Promise<{ reply: string; escalate: boolean; reason: string }> {
+    // Historico vem em ordem desc (mais recente primeiro). Mapeamos para o
+    // formato {role,text} esperado pelo DmBotService.
+    const recent = await this._dmRepository.getRecentMessages(
+      input.conversationId,
+      10
+    );
+    const history = recent.map((m) => ({ role: m.role, text: m.text }));
+
+    // userMessage = mensagem do usuario mais recente do historico.
+    const lastUser = recent.find((m) => m.role === 'user');
+    if (!lastUser) {
+      // Sem mensagem do usuario nao ha o que responder — escala por seguranca.
+      return {
+        reply: '',
+        escalate: true,
+        reason: 'sem mensagem do usuario no historico',
+      };
+    }
+
+    return this._dmBotService.generateReply({
+      orgId: input.orgId,
+      profileId: input.profileId,
+      integrationId: input.integrationId,
+      history,
+      userMessage: lastUser.text,
+    });
+  }
+
+  /**
+   * Envia a resposta do bot ao usuario respeitando a janela de 24h e o
+   * rate limit por remetente. Registra a mensagem do assistente e
+   * incrementa o contador de respostas do bot.
+   */
+  @ActivityMethod()
+  async sendDmReply(input: {
+    conversationId: string;
+    orgId: string;
+    integrationId: string;
+    igSenderId: string;
+    reply: string;
+  }): Promise<void> {
+    // 1. Janela de 24h: fora dela a Meta rejeita. No-op com log.
+    // O rate limit por remetente e aplicado uma unica vez no intake
+    // (DmFlowService.handleIncomingDirectMessage), nao aqui — esta activity
+    // e re-tentada pelo Temporal e nao deve consumir cota em cada retry.
+    const conversation = await this._dmRepository.getById(input.conversationId);
+    if (isOutsideDmWindow(conversation?.lastInboundAt)) {
+      this._logger.warn(
+        `sendDmReply: conversa ${input.conversationId} fora da janela de 24h — nao enviado`
+      );
+      return;
+    }
+
+    // 2. Resolve rota (token/host) e envia.
+    const integration = await this._integrationService.getIntegrationById(
+      input.orgId,
+      input.integrationId
+    );
+    if (!integration) {
+      throw new Error(`Integration ${input.integrationId} not found`);
+    }
+
+    const route = await this.resolveIgRoute(integration);
+    await this._instagramMessagingService.sendDmWithToken({
+      token: route.token,
+      recipientIgsid: input.igSenderId,
+      message: input.reply,
+      useInstagramGraph: route.useIgGraph,
+    });
+
+    // 4. Registra a resposta do assistente e incrementa o contador.
+    await this._dmRepository.appendMessage(
+      input.conversationId,
+      'assistant',
+      input.reply
+    );
+    await this._dmRepository.incrementBotReply(input.conversationId);
+  }
+
+  /**
+   * Escala a conversa para atendimento humano: marca handoff, notifica a
+   * organizacao e (dentro da janela de 24h) envia uma unica mensagem de
+   * espera ao usuario. Fora da janela, apenas marca e notifica.
+   */
+  @ActivityMethod()
+  async escalateDmToHuman(input: {
+    conversationId: string;
+    orgId: string;
+    integrationId: string;
+    igSenderId: string;
+    reason: string;
+    fallbackMessage?: string;
+  }): Promise<void> {
+    // Carrega a conversa ANTES do markHandoff para detectar a transicao.
+    // Se ja estava em HUMAN_HANDOFF, a activity esta sendo re-executada (ou
+    // outro caminho ja escalou): markHandoff e idempotente, mas a notificacao
+    // so deve sair na transicao, nao a cada re-execucao.
+    const conversation = await this._dmRepository.getById(input.conversationId);
+    const wasAlreadyHandoff =
+      conversation?.status === DmConversationStatus.HUMAN_HANDOFF;
+
+    await this._dmRepository.markHandoff(input.conversationId, input.reason);
+
+    if (!wasAlreadyHandoff) {
+      await this._notificationService.inAppNotification(
+        input.orgId,
+        'Atendimento por DM escalado',
+        `Uma conversa foi escalada para atendimento humano. Motivo: ${input.reason}`,
+        false,
+        false,
+        'info'
+      );
+    }
+
+    // Mensagem de espera ao usuario — apenas dentro da janela de 24h.
+    if (isOutsideDmWindow(conversation?.lastInboundAt)) {
+      this._logger.warn(
+        `escalateDmToHuman: conversa ${input.conversationId} fora da janela de 24h — handoff marcado, mensagem de espera nao enviada`
+      );
+      return;
+    }
+
+    const integration = await this._integrationService.getIntegrationById(
+      input.orgId,
+      input.integrationId
+    );
+    if (!integration) {
+      throw new Error(`Integration ${input.integrationId} not found`);
+    }
+
+    const message =
+      input.fallbackMessage?.trim() || DM_HANDOFF_FALLBACK_MESSAGE;
+    const route = await this.resolveIgRoute(integration);
+    await this._instagramMessagingService.sendDmWithToken({
+      token: route.token,
+      recipientIgsid: input.igSenderId,
+      message,
+      useInstagramGraph: route.useIgGraph,
+    });
+  }
+
+  /**
+   * Semeia uma conversa de DM a partir de um handoff de comentario
+   * (usado na Fase 3). Faz upsert da conversa com source='comment_handoff'.
+   */
+  @ActivityMethod()
+  async seedDmHandoff(input: {
+    integrationId: string;
+    organizationId: string;
+    profileId?: string;
+    igAccountId: string;
+    igSenderId: string;
+    igSenderName?: string;
+  }): Promise<void> {
+    await this._dmRepository.upsertConversation({
+      organizationId: input.organizationId,
+      profileId: input.profileId,
+      integrationId: input.integrationId,
+      igAccountId: input.igAccountId,
+      igSenderId: input.igSenderId,
+      igSenderName: input.igSenderName,
+      source: 'comment_handoff',
+    });
   }
 }

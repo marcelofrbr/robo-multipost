@@ -316,6 +316,8 @@ const FlowEditorInner: FC<FlowEditorProps> = ({ id }) => {
             label =
               parsed?.triggerType === 'story_reply'
                 ? 'story_reply'
+                : parsed?.triggerType === 'direct_message'
+                ? 'direct_message'
                 : 'comment_on_post';
           } catch {
             label = 'comment_on_post';

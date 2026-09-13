@@ -77,17 +77,20 @@ The [Zernio API](https://docs.zernio.com/llms-full.txt) is an alternative provid
 - **Concrete providers**: `zernio-<platform>.provider.ts` — they inherit from `ZernioBaseProvider`, passing `platform`, `platformName`, `charLimit`. Marked with `hiddenFromList = true` (they do not appear under "Add Channel" directly — they enter via "Add Channel > Zernio" or "Send Invite Link > Zernio").
 - **Identifier**: `zernio-${platform}` (e.g., `zernio-tiktok`, `zernio-pinterest`).
 - **Per-profile API key**: resolved via `clientInformation.instanceUrl` (per-profile override) with org-level fallback controlled by the `shareZernioWithProfiles` flag.
+- **Connect endpoints**: `apps/backend/src/api/routes/zernio.integrations.controller.ts` — `/profiles`, `/accounts`, `/connect-account`, `/invite-link`, `/new-account-url`. All resolve the caller's API key via the same profile→org fallback (`getZernioApiKey`).
 
 ### Supported flows
 
 1. **Add Channel > Zernio**: admin selects an account already connected in their Zernio account.
-2. **Send Invite Link > Zernio**: admin generates a per-platform OAuth link for the client to connect — endpoint `POST https://zernio.com/api/v1/platform-invites` (response shape: `{ invite: { inviteUrl, ... } }`).
+2. **Add Channel > Zernio > Conectar nova conta**: a "connect new account" button in the same modal calls `GET /integrations/zernio/new-account-url` for a Zernio-hosted OAuth URL, redirects same-tab, and Zernio bounces back to `/integrations/social/zernio-<platform>?connected=&profileId=&accountId=&username=` (or `?error=<slug>`) with **no `state`/`code`**. `ContinueIntegration` recognizes this shape via `parseZernioCallback` and calls `POST /integrations/zernio/connect-account` instead of the generic `social-connect` flow — see Known Pitfall below on why the backend re-verifies identity instead of trusting these query params.
+3. **Send Invite Link > Zernio**: admin generates a per-platform OAuth link for the client to connect — endpoint `POST https://zernio.com/api/v1/platform-invites` (response shape: `{ invite: { inviteUrl, ... } }`).
 
 After the client connects via the invite, the admin returns to "Add Channel > Zernio" and adds the new account.
 
 ### Frontend
 
-- Modals: `apps/frontend/src/components/launches/zernio/` (`zernio-account-modal.tsx`, `zernio-invite-modal.tsx`, etc.).
+- Modals: `apps/frontend/src/components/launches/zernio/` (`zernio-account-modal.tsx`, `zernio-invite-modal.tsx`, `zernio-callback.helper.ts` — pure parser for the stateless OAuth-return query params, tested in `zernio-callback.helper.test.ts`).
+- OAuth return handling: `apps/frontend/src/components/launches/continue.integration.tsx` (`ContinueIntegration`) branches into the Zernio connect-account POST before falling through to the generic `social-connect` flow.
 
 ### Why Zernio and not Late
 
@@ -143,6 +146,7 @@ The company fully rebranded Late/getlate.dev → Zernio (same company, new brand
 5. **Symptom:** Trying to import `late.*.provider` → **Cause:** Late was removed (rebranded to Zernio). **Fix:** use `zernio-<platform>.provider.ts`.
 6. **Symptom:** Token refresh in an infinite loop → **Cause:** `RefreshToken` thrown even after a successful refresh. **Fix:** ensure the new token updates `Integration.token` and the original call is retried with the new token.
 7. **Symptom:** `GET /{mediaId}?fields=...,boost_eligibility_info` returns `"(#100) Tried accessing nonexisting field"` → **Cause:** `boost_eligibility_info` only exists on the Facebook Login Graph (`graph.facebook.com`); the Instagram Login Graph (`graph.instagram.com` / standalone) does not expose it. Per [Meta docs](https://developers.facebook.com/docs/instagram-platform/reference/instagram-media), only "Instagram API with Facebook Login" supports it. **Fix:** check `host.includes('graph.facebook.com')` before including the field. `InstagramProvider.getMediaMetadata` already implements this guard with a retry-without-field safety net — reuse it instead of writing a new Graph API call for media metadata.
+8. **Symptom:** a crafted `/integrations/social/zernio-<platform>?profileId=<any>&accountId=<any>&username=<any>` link could create a channel bound to an account the caller does not own, or with a spoofed display name → **Cause:** the Zernio "connect new account" OAuth return has **no `state`/`code`/HMAC** — it is a same-tab redirect that appends `profileId`/`accountId`/`username` as plain, attacker-controllable query params. **Fix:** `POST /integrations/zernio/connect-account` MUST call `zernio.accounts.listAccounts({ query: { profileId } })` with the **caller's own** API key (`getZernioApiKey(org, profile)`) and only accept an `accountId` found in that response (`findZernioAccount`); reject on platform mismatch (400); always take `name`/`username` from the Zernio response, never from the request body (`username`/`displayName` in the body are ignored). See `zernio.integrations.controller.spec.ts` for the negative-path cases.
 
 ## Commands
 

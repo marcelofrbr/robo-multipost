@@ -13,7 +13,11 @@ interface Props {
   onCreated?: () => void;
 }
 
-type TriggerType = 'comment_on_post' | 'story_reply' | 'repost_story';
+type TriggerType =
+  | 'comment_on_post'
+  | 'story_reply'
+  | 'repost_story'
+  | 'direct_message';
 
 interface TriggerOption {
   id: TriggerType;
@@ -46,6 +50,14 @@ const TRIGGERS: TriggerOption[] = [
     descFallback:
       'Monitore stories do Instagram e republique em TikTok e YouTube Shorts',
   },
+  {
+    id: 'direct_message',
+    titleKey: 'nova_automacao_sidebar_dm_bot',
+    titleFallback: 'Atendimento por DM (IA)',
+    descKey: 'nova_automacao_sidebar_dm_bot_desc',
+    descFallback:
+      'Responda automaticamente as mensagens diretas com IA e escale para um humano quando preciso',
+  },
 ];
 
 export const NovaAutomacaoModal: FC<Props> = ({ open, onClose, onCreated }) => {
@@ -59,6 +71,8 @@ export const NovaAutomacaoModal: FC<Props> = ({ open, onClose, onCreated }) => {
   const [flowName, setFlowName] = useState('');
   const [integrationId, setIntegrationId] = useState('');
   const [creating, setCreating] = useState(false);
+  const [dmBotEnabled, setDmBotEnabled] = useState(true);
+  const [dmBotFallback, setDmBotFallback] = useState('');
   const [webhookCheck, setWebhookCheck] = useState<{
     loading: boolean;
     ok?: boolean;
@@ -71,6 +85,8 @@ export const NovaAutomacaoModal: FC<Props> = ({ open, onClose, onCreated }) => {
       setIntegrationId('');
       setActiveTrigger('comment_on_post');
       setWebhookCheck({ loading: false });
+      setDmBotEnabled(true);
+      setDmBotFallback('');
     }
   }, [open]);
 
@@ -105,12 +121,52 @@ export const NovaAutomacaoModal: FC<Props> = ({ open, onClose, onCreated }) => {
   const canCreate =
     activeTrigger === 'repost_story'
       ? true
+      : activeTrigger === 'direct_message'
+      ? !!integrationId && !creating
       : !!flowName.trim() && !!integrationId && !!webhookCheck.ok && !creating;
 
   const handleCreate = async () => {
     if (activeTrigger === 'repost_story') {
       onClose();
       router.push('/automacoes/repost/nova');
+      return;
+    }
+    if (activeTrigger === 'direct_message') {
+      if (!canCreate) return;
+      setCreating(true);
+      try {
+        const response = await fetchApi('/flows/dm/bot', {
+          method: 'POST',
+          body: JSON.stringify({
+            integrationId,
+            enabled: dmBotEnabled,
+            fallbackMessage: dmBotFallback.trim() || undefined,
+          }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          toaster.show(
+            body.message ||
+              t('dm_bot_save_failed', 'Falha ao salvar o bot de atendimento'),
+            'warning'
+          );
+          return;
+        }
+        toaster.show(
+          t('dm_bot_saved', 'Bot de atendimento por DM salvo com sucesso'),
+          'success'
+        );
+        onCreated?.();
+        onClose();
+        router.push('/automacoes');
+      } catch {
+        toaster.show(
+          t('dm_bot_save_failed', 'Falha ao salvar o bot de atendimento'),
+          'warning'
+        );
+      } finally {
+        setCreating(false);
+      }
       return;
     }
     if (!canCreate) return;
@@ -215,7 +271,100 @@ export const NovaAutomacaoModal: FC<Props> = ({ open, onClose, onCreated }) => {
               </p>
             </div>
 
-            {activeTrigger === 'repost_story' ? (
+            {activeTrigger === 'direct_message' ? (
+              <div className="flex flex-col gap-[14px] max-w-[520px]">
+                <p className="text-[13px] text-textColor leading-[1.6]">
+                  {t(
+                    'dm_bot_modal_intro',
+                    'Ative um bot que responde automaticamente as mensagens diretas da conta selecionada e transfere para um humano quando necessario.'
+                  )}
+                </p>
+
+                <div className="flex flex-col gap-[6px]">
+                  <label className="text-[13px] text-textColor">
+                    {t('select_instagram_account', 'Conta do Instagram')}
+                  </label>
+                  {instagramIntegrations.length === 0 ? (
+                    <p className="text-[12px] text-customColor19">
+                      {t(
+                        'no_instagram_connected',
+                        'Nenhuma conta do Instagram conectada. Conecte uma em Integracoes.'
+                      )}
+                    </p>
+                  ) : (
+                    <div className="bg-newBgColorInner h-[42px] border-newTableBorder border rounded-[8px] flex items-center">
+                      <select
+                        className="h-full bg-transparent outline-none flex-1 text-[14px] text-textColor px-[16px] appearance-none"
+                        value={integrationId}
+                        onChange={(e) => setIntegrationId(e.target.value)}
+                      >
+                        <option value="">
+                          {t('select_account', 'Selecione uma conta...')}
+                        </option>
+                        {instagramIntegrations.map((ig: any) => (
+                          <option key={ig.id} value={ig.id}>
+                            {ig.name || ig.display || ig.id}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-[12px] p-[12px] rounded-[8px] border border-fifth bg-sixth/60">
+                  <div>
+                    <div className="text-[13px] text-textColor">
+                      {t('dm_bot_enable', 'Ativar bot de atendimento por DM')}
+                    </div>
+                    <div className="text-[11px] text-customColor18 mt-[2px]">
+                      {t(
+                        'dm_bot_enable_hint',
+                        'Quando desligado, o bot fica pausado e nao responde as mensagens.'
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-pressed={dmBotEnabled}
+                    onClick={() => setDmBotEnabled((v) => !v)}
+                    className={`relative w-[44px] h-[24px] rounded-full transition-colors flex-shrink-0 ${
+                      dmBotEnabled ? 'bg-btnPrimary' : 'bg-customColor18/30'
+                    }`}
+                  >
+                    <div
+                      className={`absolute top-[2px] w-[20px] h-[20px] rounded-full bg-white transition-all ${
+                        dmBotEnabled ? 'left-[22px]' : 'left-[2px]'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-[6px]">
+                  <label className="text-[13px] text-textColor">
+                    {t(
+                      'dm_bot_fallback_label',
+                      'Mensagem de fallback (quando escalar para humano)'
+                    )}
+                  </label>
+                  <textarea
+                    value={dmBotFallback}
+                    onChange={(e) => setDmBotFallback(e.target.value)}
+                    rows={3}
+                    placeholder={t(
+                      'dm_bot_fallback_placeholder',
+                      'Um momento! Vou te transferir para um atendente humano que vai continuar essa conversa.'
+                    )}
+                    className="w-full bg-newBgColorInner border border-newTableBorder rounded-[8px] text-[13px] text-textColor px-[14px] py-[10px] outline-none resize-none"
+                  />
+                  <span className="text-[11px] text-customColor18">
+                    {t(
+                      'dm_bot_fallback_hint',
+                      'Enviada ao usuario quando o bot transferir a conversa para um atendente humano.'
+                    )}
+                  </span>
+                </div>
+              </div>
+            ) : activeTrigger === 'repost_story' ? (
               <div className="flex flex-col gap-[12px] max-w-[520px] rounded-[4px] border border-fifth bg-sixth/60 p-[16px]">
                 <p className="text-[13px] text-textColor leading-[1.6]">
                   {t(
@@ -336,6 +485,8 @@ export const NovaAutomacaoModal: FC<Props> = ({ open, onClose, onCreated }) => {
               ? t('creating_flow', 'Criando...')
               : activeTrigger === 'repost_story'
               ? t('repost_open_wizard', 'Abrir wizard de Repost')
+              : activeTrigger === 'direct_message'
+              ? t('dm_bot_save', 'Salvar bot de atendimento')
               : t('create_and_continue', 'Criar e continuar')}
           </button>
         </div>

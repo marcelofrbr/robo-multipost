@@ -1,0 +1,54 @@
+---
+# Build da imagem com TODAS as features (MCP + carrossel/galeria + automacoes + DM).
+# Branch: feat/atendimento-dm-ia (contem tudo).
+#   - dispara no push da branch ou manualmente (workflow_dispatch);
+#   - usa o GITHUB_TOKEN nativo (sem secret extra no fork);
+#   - publica em ghcr.io/<owner>/robo-multipost:all (amd64).
+# Depois, troque a tag da imagem no stack do Swarm/Portainer para :all.
+# A imagem roda `prisma-db-push` no boot (Dockerfile.dev CMD), entao nao ha
+# migracao manual apos o deploy.
+name: "Build all-features image"
+
+on:
+  push:
+    branches:
+      - feat/atendimento-dm-ia
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.dev
+          platforms: linux/amd64
+          push: true
+          pull: true
+          no-cache: true
+          provenance: false
+          sbom: false
+          build-args: |
+            NEXT_PUBLIC_VERSION=all
+          tags: ghcr.io/${{ github.repository_owner }}/robo-multipost:all

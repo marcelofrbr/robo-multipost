@@ -1,9 +1,11 @@
 import {
+  ForbiddenException,
   forwardRef,
   HttpException,
   HttpStatus,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { IntegrationRepository } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.repository';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
@@ -286,6 +288,65 @@ export class IntegrationService {
         expiresIn
       );
     }
+  }
+
+  /**
+   * Versao da API publica de validateIntegrationProfile: 404 (inexistente/
+   * apagado) e 403 (outro perfil) em vez de Error generico (500). Canal sem
+   * perfil e compartilhado — mesma regra de getIntegrationById/getIntegrationsList.
+   */
+  async getIntegrationInScope(orgId: string, integrationId: string, profileId?: string) {
+    const integration = await this._integrationRepository.getIntegrationById(orgId, integrationId);
+    if (!integration || integration.deletedAt) {
+      throw new NotFoundException('Integration not found');
+    }
+    if (profileId && integration.profileId && integration.profileId !== profileId) {
+      throw new ForbiddenException('Integration belongs to another profile');
+    }
+    return integration;
+  }
+
+  /**
+   * URL de OAuth para conectar um canal via API publica ou MCP. Grava no
+   * Redis o que o callback (no.auth.integrations.controller) precisa:
+   * organization:/login:/profile:/refresh: + state, com TTL de 1h. Uma unica
+   * implementacao para REST e MCP — mudanca de regra (TTL, chaves) e feita aqui.
+   */
+  async createAuthUrl(
+    orgId: string,
+    provider: string,
+    opts: { profileId?: string; refresh?: string }
+  ): Promise<{ url: string }> {
+    if (!this._integrationManager.getAllowedSocialsIntegrations().includes(provider)) {
+      throw new HttpException({ msg: 'Integration not allowed' }, 400);
+    }
+    const integrationProvider = this._integrationManager.getSocialIntegration(provider);
+    if (integrationProvider.externalUrl) {
+      throw new HttpException(
+        { msg: 'This integration requires an external URL and is not supported via the public API' },
+        400
+      );
+    }
+
+    let auth: { url: string; state: string; codeVerifier: string };
+    try {
+      auth = await integrationProvider.generateAuthUrl();
+    } catch (err) {
+      throw new HttpException({ msg: 'Failed to generate auth URL' }, 500);
+    }
+
+    const { codeVerifier, state, url } = auth;
+    if (opts.refresh) {
+      await ioRedis.set(`refresh:${state}`, opts.refresh, 'EX', 3600);
+    }
+    await ioRedis.set(`organization:${state}`, orgId, 'EX', 3600);
+    await ioRedis.set(`login:${state}`, codeVerifier, 'EX', 3600);
+    // Perfil da chave viaja no state: o callback grava o canal ja no perfil
+    // certo, em vez de deixa-lo sem perfil (compartilhado).
+    if (opts.profileId) {
+      await ioRedis.set(`profile:${state}`, opts.profileId, 'EX', 3600);
+    }
+    return { url };
   }
 
   async validateIntegrationProfile(orgId: string, integrationId: string, profileId?: string) {

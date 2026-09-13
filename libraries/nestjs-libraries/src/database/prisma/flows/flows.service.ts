@@ -1,4 +1,11 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 import { FlowsRepository } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.repository';
 import {
   FlowStatus,
@@ -14,6 +21,7 @@ import {
   SaveCanvasDto,
   QuickCreateFlowDto,
 } from '@gitroom/nestjs-libraries/dtos/flows/flow.dto';
+import { checkPublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/validators/is-public-https-url.validator';
 import { TemporalService } from 'nestjs-temporal-core';
 import {
   organizationId as orgSearchAttr,
@@ -41,8 +49,8 @@ export class FlowsService {
     private _credentialService: CredentialService
   ) {}
 
-  getFlows(orgId: string, profileId?: string) {
-    return this._flowsRepository.getFlows(orgId, profileId);
+  getFlows(orgId: string, profileId?: string, integrationId?: string) {
+    return this._flowsRepository.getFlows(orgId, profileId, integrationId);
   }
 
   getFlow(orgId: string, id: string, profileId?: string) {
@@ -53,7 +61,52 @@ export class FlowsService {
     return this._flowsRepository.getFlowById(id);
   }
 
+  /**
+   * Guard usado pelos caminhos expostos na API publica: a integracao precisa
+   * existir, estar ativa e pertencer ao perfil da chave (quando houver).
+   * 412 orienta o cliente a reconectar; 403 fecha IDOR por integrationId.
+   *
+   * Integracao com `profileId` nulo (canal conectado antes dos perfis) e
+   * tratada como compartilhada entre os perfis da org — mesma regra de
+   * `IntegrationRepository.getIntegrationById`/`getIntegrationsList`
+   * (`OR: [{ profileId }, { profileId: null }]`). Restringir isso e uma
+   * decisao de produto que precisa valer para a UI e a API ao mesmo tempo.
+   */
+  async assertIntegrationAccess(
+    orgId: string,
+    integrationId: string,
+    callerProfileId?: string
+  ) {
+    const integration = await this._integrationService.getIntegrationById(
+      orgId,
+      integrationId
+    );
+    if (!integration || (integration as any).deletedAt) {
+      throw new HttpException(
+        'Integracao nao encontrada',
+        HttpStatus.PRECONDITION_FAILED
+      );
+    }
+    // refreshNeeded e gravado quando o refresh do token falha (a Graph API
+    // vai recusar a assinatura do webhook) — mesmo 412 da integracao desativada.
+    if ((integration as any).disabled || (integration as any).refreshNeeded) {
+      throw new HttpException(
+        'Integracao desativada ou com token expirado. Reconecte a conta antes de criar automacoes.',
+        HttpStatus.PRECONDITION_FAILED
+      );
+    }
+    if (
+      callerProfileId &&
+      integration.profileId &&
+      integration.profileId !== callerProfileId
+    ) {
+      throw new ForbiddenException('Integracao pertence a outro perfil');
+    }
+    return integration;
+  }
+
   async createFlow(orgId: string, body: CreateFlowDto, profileId?: string) {
+    await this.assertIntegrationAccess(orgId, body.integrationId, profileId);
     const check = await this.checkIntegrationWebhook(orgId, body.integrationId);
     if (!check.ok) {
       throw new BadRequestException(check.error);
@@ -492,6 +545,8 @@ export class FlowsService {
     if (!current) {
       throw new BadRequestException('Flow not found');
     }
+    await this.assertIntegrationAccess(orgId, current.integrationId, profileId);
+    this.assertDmButtonUrl(body.dmButtonUrl);
     await this._flowsRepository.updateFlow(orgId, id, { name: body.name }, profileId);
 
     const triggerType = body.triggerType ?? 'comment_on_post';
@@ -522,6 +577,7 @@ export class FlowsService {
       const dmData: Record<string, any> = { message: body.dmMessage };
       if (body.dmButtonText) dmData.buttonText = body.dmButtonText;
       if (body.dmButtonUrl) dmData.buttonUrl = body.dmButtonUrl;
+      if (body.handoffToBot) dmData.handoffToBot = true;
       nodes.push({ type: 'SEND_DM', positionX: 250, positionY: 50 + nodes.length * 150, data: JSON.stringify(dmData) });
       edges.push({ sourceIndex: lastIndex, targetIndex: nodes.length - 1 });
     }
@@ -547,7 +603,24 @@ export class FlowsService {
     return this._flowsRepository.getFlow(orgId, id, profileId);
   }
 
+  /**
+   * Mesma regra do decorator @IsPublicHttpsUrl do DTO, aplicada aqui para os
+   * chamadores que nao passam pelo ValidationPipe (tools MCP chamam o service
+   * direto). Campo opcional: ausente/vazio passa.
+   */
+  private assertDmButtonUrl(dmButtonUrl?: string) {
+    if (!dmButtonUrl) {
+      return;
+    }
+    const error = checkPublicHttpsUrl(dmButtonUrl);
+    if (error) {
+      throw new BadRequestException(`dmButtonUrl: ${error}`);
+    }
+  }
+
   async quickCreateFlow(orgId: string, body: QuickCreateFlowDto, profileId?: string) {
+    await this.assertIntegrationAccess(orgId, body.integrationId, profileId);
+    this.assertDmButtonUrl(body.dmButtonUrl);
     const check = await this.checkIntegrationWebhook(orgId, body.integrationId);
     if (!check.ok) {
       throw new BadRequestException(check.error);
@@ -610,6 +683,7 @@ export class FlowsService {
       const dmData: Record<string, any> = { message: body.dmMessage };
       if (body.dmButtonText) dmData.buttonText = body.dmButtonText;
       if (body.dmButtonUrl) dmData.buttonUrl = body.dmButtonUrl;
+      if (body.handoffToBot) dmData.handoffToBot = true;
       nodes.push({
         type: 'SEND_DM',
         positionX: 250,
@@ -646,6 +720,107 @@ export class FlowsService {
     await this._flowsRepository.updateFlowStatus(orgId, flow.id, FlowStatus.ACTIVE, profileId);
 
     return this._flowsRepository.getFlow(orgId, flow.id, profileId);
+  }
+
+  /**
+   * Cria ou atualiza o Flow do bot de atendimento por DM (trigger
+   * 'direct_message') de uma integration Instagram. Diferente de
+   * quickCreateFlow, NAO chama checkIntegrationWebhook/Graph API: o bot de DM
+   * nao depende daquela subscription especifica e precisa funcionar tambem
+   * com contas instagram-standalone. Valida apenas o provider.
+   *
+   * Se ja existir um Flow com trigger 'direct_message' para a integration
+   * (mesmo PAUSED), reaproveita: atualiza status e fallbackMessage. Caso
+   * contrario, cria um novo Flow "Atendimento por DM" com um unico node
+   * TRIGGER.
+   */
+  async createOrUpdateDirectMessageBotFlow(
+    orgId: string,
+    integrationId: string,
+    opts: { enabled: boolean; fallbackMessage?: string },
+    profileId?: string
+  ): Promise<{ flowId: string; status: FlowStatus }> {
+    // Mesmo guard dos outros caminhos de escrita: fecha IDOR por integrationId
+    // (chave de perfil ligando o bot de DM de um canal de outro perfil).
+    await this.assertIntegrationAccess(orgId, integrationId, profileId);
+    const integration = await this._integrationService.getIntegrationById(
+      orgId,
+      integrationId
+    );
+    if (!integration) {
+      throw new BadRequestException('Integracao nao encontrada');
+    }
+    if (
+      integration.providerIdentifier !== 'instagram' &&
+      integration.providerIdentifier !== 'instagram-standalone'
+    ) {
+      throw new BadRequestException(
+        'Apenas contas do Instagram suportam o bot de DM'
+      );
+    }
+
+    const targetStatus = opts.enabled ? FlowStatus.ACTIVE : FlowStatus.PAUSED;
+
+    const triggerData = JSON.stringify({
+      triggerType: 'direct_message',
+      fallbackMessage: opts.fallbackMessage,
+    });
+
+    const existingFlows =
+      await this._flowsRepository.getFlowsForIntegration(integrationId);
+    const existing = existingFlows.find((flow) =>
+      this.isDirectMessageFlow(flow)
+    );
+
+    let flowId: string;
+    if (existing) {
+      flowId = existing.id;
+    } else {
+      const created = await this._flowsRepository.createFlow(
+        orgId,
+        { name: 'Atendimento por DM', integrationId },
+        profileId
+      );
+      flowId = created.id;
+    }
+
+    const flowNodes = [
+      {
+        id: 'temp-0',
+        type: 'TRIGGER' as any,
+        label: 'direct_message',
+        positionX: 250,
+        positionY: 50,
+        data: triggerData,
+      },
+    ];
+
+    await this._flowsRepository.saveCanvas(orgId, flowId, flowNodes, [], profileId);
+
+    const updated = await this._flowsRepository.updateFlowStatus(
+      orgId,
+      flowId,
+      targetStatus,
+      profileId
+    );
+
+    return { flowId, status: updated.status };
+  }
+
+  private isDirectMessageFlow(flow: {
+    nodes?: Array<{ type: string; label?: string | null; data: string | null }>;
+  }): boolean {
+    const trigger = flow.nodes?.find((n) => n.type === 'TRIGGER');
+    if (!trigger) return false;
+    if (trigger.label === 'direct_message') return true;
+    if (trigger.data) {
+      try {
+        return JSON.parse(trigger.data)?.triggerType === 'direct_message';
+      } catch {
+        // ignora data malformada
+      }
+    }
+    return false;
   }
 
   private buildTriggerConfig(body: QuickCreateFlowDto): Record<string, any> {
@@ -795,8 +970,10 @@ export class FlowsService {
     orgId: string,
     integrationId: string,
     cursor?: string,
-    limit = 25
+    limit = 25,
+    profileId?: string
   ) {
+    await this.assertIntegrationAccess(orgId, integrationId, profileId);
     const integration = await this._integrationService.getIntegrationById(
       orgId,
       integrationId
@@ -832,8 +1009,10 @@ export class FlowsService {
 
   async getInstagramStoriesByIntegration(
     orgId: string,
-    integrationId: string
+    integrationId: string,
+    profileId?: string
   ) {
+    await this.assertIntegrationAccess(orgId, integrationId, profileId);
     const integration = await this._integrationService.getIntegrationById(
       orgId,
       integrationId
@@ -865,8 +1044,8 @@ export class FlowsService {
     }
   }
 
-  getExecution(id: string) {
-    return this._flowsRepository.getExecution(id);
+  getExecution(orgId: string, id: string, flowId?: string) {
+    return this._flowsRepository.getExecution(orgId, id, flowId);
   }
 
   appendExecutionLog(
@@ -876,8 +1055,8 @@ export class FlowsService {
     return this._flowsRepository.appendExecutionLog(id, entry);
   }
 
-  getExecutions(flowId: string, page?: number, limit?: number) {
-    return this._flowsRepository.getExecutions(flowId, page, limit);
+  getExecutions(orgId: string, flowId: string, page?: number, limit?: number) {
+    return this._flowsRepository.getExecutions(orgId, flowId, page, limit);
   }
 
   updateExecution(

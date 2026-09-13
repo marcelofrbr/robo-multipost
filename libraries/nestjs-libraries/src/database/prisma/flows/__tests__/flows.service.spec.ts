@@ -23,10 +23,12 @@ const mockRepository = {
   saveCanvas: jest.fn(),
   updateFlowStatus: jest.fn(),
   getExecutions: jest.fn(),
+  getExecution: jest.fn(),
   createExecution: jest.fn(),
   updateExecution: jest.fn(),
   findExistingExecution: jest.fn(),
   getActiveFlowsForIntegration: jest.fn(),
+  getFlowsForIntegration: jest.fn(),
   findPendingNextPublicationFlows: jest.fn(),
   bindFlowTriggerToMedia: jest.fn(),
   createPendingPostback: jest.fn(),
@@ -144,7 +146,13 @@ describe('FlowsService', () => {
     it('should delegate to repository', async () => {
       mockRepository.getFlows.mockResolvedValue([]);
       await service.getFlows('org-1', 'profile-1');
-      expect(mockRepository.getFlows).toHaveBeenCalledWith('org-1', 'profile-1');
+      expect(mockRepository.getFlows).toHaveBeenCalledWith('org-1', 'profile-1', undefined);
+    });
+
+    it('repassa o filtro por integrationId ao repositorio', async () => {
+      mockRepository.getFlows.mockResolvedValue([]);
+      await service.getFlows('org-1', 'profile-1', 'int-1');
+      expect(mockRepository.getFlows).toHaveBeenCalledWith('org-1', 'profile-1', 'int-1');
     });
   });
 
@@ -1458,5 +1466,456 @@ describe('FlowsService', () => {
       );
       expect(result).toHaveLength(1);
     });
+  });
+
+  describe('quickCreateFlow', () => {
+    beforeEach(() => {
+      // Isola o comportamento de montagem dos nodes: o check de webhook tem
+      // logica propria (fetch + credenciais) coberta em outro describe.
+      jest
+        .spyOn(service as any, 'checkIntegrationWebhook')
+        .mockResolvedValue({ ok: true });
+      mockRepository.createFlow.mockResolvedValue({ id: 'flow-1' });
+      mockRepository.saveCanvas.mockResolvedValue(undefined);
+      mockRepository.updateFlowStatus.mockResolvedValue(undefined);
+      mockRepository.getFlow.mockResolvedValue({ id: 'flow-1' });
+    });
+
+    it('persiste handoffToBot=true no data do node SEND_DM', async () => {
+      await service.quickCreateFlow('org-1', {
+        name: 'Atendimento',
+        integrationId: 'int-1',
+        triggerType: 'comment_on_post',
+        dmMessage: 'Ola! Como posso ajudar?',
+        handoffToBot: true,
+      });
+
+      expect(mockRepository.saveCanvas).toHaveBeenCalledTimes(1);
+      const savedNodes = (mockRepository.saveCanvas.mock.calls[0] as any[])[2];
+      const dmNode = savedNodes.find(
+        (n: any) => n.type === FlowNodeType.SEND_DM
+      );
+      expect(dmNode).toBeDefined();
+      const data = JSON.parse(dmNode.data);
+      expect(data.handoffToBot).toBe(true);
+      expect(data.message).toBe('Ola! Como posso ajudar?');
+    });
+
+    it('nao grava handoffToBot quando a flag e ausente', async () => {
+      await service.quickCreateFlow('org-1', {
+        name: 'Atendimento',
+        integrationId: 'int-1',
+        triggerType: 'comment_on_post',
+        dmMessage: 'Ola!',
+      });
+
+      const savedNodes = (mockRepository.saveCanvas.mock.calls[0] as any[])[2];
+      const dmNode = savedNodes.find(
+        (n: any) => n.type === FlowNodeType.SEND_DM
+      );
+      const data = JSON.parse(dmNode.data);
+      expect(data.handoffToBot).toBeUndefined();
+    });
+  });
+
+  // --- Bot de DM (atendimento por DM) ---
+
+  describe('createOrUpdateDirectMessageBotFlow', () => {
+    it('cria um flow novo ACTIVE quando nao existe e enabled=true', async () => {
+      mockIntegrationService.getIntegrationById.mockResolvedValue({
+        id: 'int-1',
+        providerIdentifier: 'instagram',
+        organizationId: 'org-1',
+        profileId: null,
+      });
+      mockRepository.getFlowsForIntegration.mockResolvedValue([]);
+      mockRepository.createFlow.mockResolvedValue({ id: 'flow-dm-1' });
+      mockRepository.saveCanvas.mockResolvedValue({ nodes: [], edges: [] });
+      mockRepository.updateFlowStatus.mockResolvedValue({
+        id: 'flow-dm-1',
+        status: FlowStatus.ACTIVE,
+      });
+
+      const result = await service.createOrUpdateDirectMessageBotFlow(
+        'org-1',
+        'int-1',
+        { enabled: true, fallbackMessage: 'Aguarde um atendente' },
+        'profile-1'
+      );
+
+      expect(mockRepository.createFlow).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ integrationId: 'int-1' }),
+        'profile-1'
+      );
+      const savedNodes = (mockRepository.saveCanvas.mock.calls[0] as any[])[2];
+      const trigger = savedNodes.find((n: any) => n.type === 'TRIGGER');
+      const data = JSON.parse(trigger.data);
+      expect(data.triggerType).toBe('direct_message');
+      expect(data.fallbackMessage).toBe('Aguarde um atendente');
+      expect(mockRepository.updateFlowStatus).toHaveBeenCalledWith(
+        'org-1',
+        'flow-dm-1',
+        FlowStatus.ACTIVE,
+        'profile-1'
+      );
+      expect(result).toEqual({
+        flowId: 'flow-dm-1',
+        status: FlowStatus.ACTIVE,
+      });
+    });
+
+    it('cria flow PAUSED quando enabled=false', async () => {
+      mockIntegrationService.getIntegrationById.mockResolvedValue({
+        id: 'int-1',
+        providerIdentifier: 'instagram',
+        organizationId: 'org-1',
+        profileId: null,
+      });
+      mockRepository.getFlowsForIntegration.mockResolvedValue([]);
+      mockRepository.createFlow.mockResolvedValue({ id: 'flow-dm-2' });
+      mockRepository.saveCanvas.mockResolvedValue({ nodes: [], edges: [] });
+      mockRepository.updateFlowStatus.mockResolvedValue({
+        id: 'flow-dm-2',
+        status: FlowStatus.PAUSED,
+      });
+
+      const result = await service.createOrUpdateDirectMessageBotFlow(
+        'org-1',
+        'int-1',
+        { enabled: false }
+      );
+
+      expect(mockRepository.updateFlowStatus).toHaveBeenCalledWith(
+        'org-1',
+        'flow-dm-2',
+        FlowStatus.PAUSED,
+        undefined
+      );
+      expect(result.status).toBe(FlowStatus.PAUSED);
+    });
+
+    it('atualiza status e fallbackMessage quando o flow ja existe', async () => {
+      mockIntegrationService.getIntegrationById.mockResolvedValue({
+        id: 'int-1',
+        providerIdentifier: 'instagram',
+        organizationId: 'org-1',
+        profileId: null,
+      });
+      mockRepository.getFlowsForIntegration.mockResolvedValue([
+        makeFlow({
+          id: 'flow-existing',
+          status: FlowStatus.PAUSED,
+          nodes: [
+            {
+              id: 'node-trigger',
+              type: 'TRIGGER',
+              label: 'direct_message',
+              data: JSON.stringify({
+                triggerType: 'direct_message',
+                fallbackMessage: 'antigo',
+              }),
+            },
+          ],
+        }),
+      ]);
+      mockRepository.saveCanvas.mockResolvedValue({ nodes: [], edges: [] });
+      mockRepository.updateFlowStatus.mockResolvedValue({
+        id: 'flow-existing',
+        status: FlowStatus.ACTIVE,
+      });
+
+      const result = await service.createOrUpdateDirectMessageBotFlow(
+        'org-1',
+        'int-1',
+        { enabled: true, fallbackMessage: 'novo' }
+      );
+
+      expect(mockRepository.createFlow).not.toHaveBeenCalled();
+      const savedNodes = (mockRepository.saveCanvas.mock.calls[0] as any[])[2];
+      const trigger = savedNodes.find((n: any) => n.type === 'TRIGGER');
+      const data = JSON.parse(trigger.data);
+      expect(data.triggerType).toBe('direct_message');
+      expect(data.fallbackMessage).toBe('novo');
+      expect(mockRepository.updateFlowStatus).toHaveBeenCalledWith(
+        'org-1',
+        'flow-existing',
+        FlowStatus.ACTIVE,
+        undefined
+      );
+      expect(result).toEqual({
+        flowId: 'flow-existing',
+        status: FlowStatus.ACTIVE,
+      });
+    });
+
+    it('aceita instagram-standalone sem rejeitar', async () => {
+      mockIntegrationService.getIntegrationById.mockResolvedValue({
+        id: 'int-1',
+        providerIdentifier: 'instagram-standalone',
+        organizationId: 'org-1',
+        profileId: null,
+      });
+      mockRepository.getFlowsForIntegration.mockResolvedValue([]);
+      mockRepository.createFlow.mockResolvedValue({ id: 'flow-dm-3' });
+      mockRepository.saveCanvas.mockResolvedValue({ nodes: [], edges: [] });
+      mockRepository.updateFlowStatus.mockResolvedValue({
+        id: 'flow-dm-3',
+        status: FlowStatus.ACTIVE,
+      });
+
+      await expect(
+        service.createOrUpdateDirectMessageBotFlow('org-1', 'int-1', {
+          enabled: true,
+        })
+      ).resolves.toEqual({ flowId: 'flow-dm-3', status: FlowStatus.ACTIVE });
+    });
+
+    it('rejeita provider que nao e Instagram', async () => {
+      mockIntegrationService.getIntegrationById.mockResolvedValue({
+        id: 'int-1',
+        providerIdentifier: 'tiktok',
+        organizationId: 'org-1',
+        profileId: null,
+      });
+
+      await expect(
+        service.createOrUpdateDirectMessageBotFlow('org-1', 'int-1', {
+          enabled: true,
+        })
+      ).rejects.toThrow('Apenas contas do Instagram suportam o bot de DM');
+      expect(mockRepository.createFlow).not.toHaveBeenCalled();
+    });
+
+    it('rejeita quando a integration nao existe', async () => {
+      mockIntegrationService.getIntegrationById.mockResolvedValue(null);
+
+      await expect(
+        service.createOrUpdateDirectMessageBotFlow('org-1', 'int-x', {
+          enabled: true,
+        })
+      ).rejects.toThrow('Integracao nao encontrada');
+    });
+  });
+
+  // --- Executions (escopo de organizacao / anti-IDOR) ---
+
+  describe('getExecutions', () => {
+    it('deve repassar orgId, flowId, page e limit para o repo', async () => {
+      mockRepository.getExecutions.mockResolvedValue([]);
+
+      await service.getExecutions('org-1', 'flow-1', 2, 50);
+
+      expect(mockRepository.getExecutions).toHaveBeenCalledWith(
+        'org-1',
+        'flow-1',
+        2,
+        50
+      );
+    });
+
+    it('deve repassar orgId mesmo sem page/limit', async () => {
+      mockRepository.getExecutions.mockResolvedValue([]);
+
+      await service.getExecutions('org-1', 'flow-1');
+
+      expect(mockRepository.getExecutions).toHaveBeenCalledWith(
+        'org-1',
+        'flow-1',
+        undefined,
+        undefined
+      );
+    });
+  });
+
+  describe('getExecution', () => {
+    it('deve repassar orgId e executionId para o repo (org guard)', async () => {
+      mockRepository.getExecution.mockResolvedValue({ id: 'exec-1' });
+
+      const result = await service.getExecution('org-1', 'exec-1');
+
+      expect(mockRepository.getExecution).toHaveBeenCalledWith(
+        'org-1',
+        'exec-1',
+        undefined
+      );
+      expect(result).toEqual({ id: 'exec-1' });
+    });
+  });
+});
+
+describe('FlowsService.assertIntegrationAccess (guard de integracao)', () => {
+  let service: FlowsService;
+
+  beforeEach(() => {
+    jest.resetAllMocks();
+    mockCredentialService.getRaw.mockResolvedValue({
+      clientId: 'fb-app',
+      clientSecret: 'fb-secret',
+    });
+    service = new FlowsService(
+      mockRepository,
+      mockTemporalService,
+      mockIntegrationService,
+      mockIntegrationManager,
+      mockCredentialService
+    );
+  });
+
+  it('quickCreateFlow responde 412 quando a integracao nao existe', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue(null);
+
+    await expect(
+      service.quickCreateFlow('org-1', { name: 'x', integrationId: 'int-404' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 412 });
+    expect(mockRepository.createFlow).not.toHaveBeenCalled();
+  });
+
+  it('quickCreateFlow responde 412 quando a integracao esta desativada', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: true,
+      profileId: null,
+    });
+
+    await expect(
+      service.quickCreateFlow('org-1', { name: 'x', integrationId: 'int-1' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 412 });
+  });
+
+  it('quickCreateFlow responde 412 quando o token da integracao expirou (refreshNeeded)', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      refreshNeeded: true,
+      profileId: null,
+    });
+
+    await expect(
+      service.quickCreateFlow('org-1', { name: 'x', integrationId: 'int-1' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 412 });
+  });
+
+  it('quickCreateFlow responde 400 para dmButtonUrl fora do padrao https publico (caminho MCP, sem ValidationPipe)', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: null,
+    });
+    // Webhook ok: garante que o 400 vem da URL, nao da checagem de webhook.
+    const webhookSpy = jest
+      .spyOn(service, 'checkIntegrationWebhook')
+      .mockResolvedValue({ ok: true } as any);
+
+    await expect(
+      service.quickCreateFlow(
+        'org-1',
+        { name: 'x', integrationId: 'int-1', dmButtonUrl: 'http://meusite.com/oferta' } as any,
+        'profile-1'
+      )
+    ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('dmButtonUrl') });
+    await expect(
+      service.quickCreateFlow(
+        'org-1',
+        { name: 'x', integrationId: 'int-1', dmButtonUrl: 'https://127.0.0.1/admin' } as any,
+        'profile-1'
+      )
+    ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('dmButtonUrl') });
+    expect(mockRepository.createFlow).not.toHaveBeenCalled();
+    webhookSpy.mockRestore();
+  });
+
+  it('quickUpdateFlow responde 400 para dmButtonUrl fora do padrao https publico', async () => {
+    mockRepository.getFlow.mockResolvedValue({ id: 'flow-1', integrationId: 'int-1' });
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: null,
+    });
+
+    await expect(
+      service.quickUpdateFlow(
+        'org-1',
+        'flow-1',
+        { name: 'x', integrationId: 'int-1', dmButtonUrl: 'javascript:alert(1)' } as any,
+        'profile-1'
+      )
+    ).rejects.toMatchObject({ status: 400 });
+    expect(mockRepository.updateFlow).not.toHaveBeenCalled();
+  });
+
+  it('quickCreateFlow responde 403 quando a integracao pertence a outro perfil', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: 'profile-outro',
+    });
+
+    await expect(
+      service.quickCreateFlow('org-1', { name: 'x', integrationId: 'int-1' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('createOrUpdateDirectMessageBotFlow responde 403 para integracao de outro perfil', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: 'profile-outro',
+      providerIdentifier: 'instagram',
+    });
+
+    await expect(
+      service.createOrUpdateDirectMessageBotFlow('org-1', 'int-1', { enabled: true }, 'profile-1')
+    ).rejects.toMatchObject({ status: 403 });
+    expect(mockRepository.createFlow).not.toHaveBeenCalled();
+  });
+
+  it('getInstagramPostsByIntegration responde 403 para integracao de outro perfil', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: 'profile-outro',
+    });
+
+    await expect(
+      service.getInstagramPostsByIntegration('org-1', 'int-1', undefined, 25, 'profile-1')
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('integracao sem profileId (legado) e compartilhada: chave de perfil passa, como em getIntegrationById', async () => {
+    // Espelha o repositorio de integracoes (OR profileId / profileId null):
+    // canal sem perfil atribuido e visivel a todos os perfis da org. Mudar
+    // isso e decisao de produto, nao deste guard.
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-legado',
+      disabled: false,
+      profileId: null,
+    });
+
+    await expect(
+      service.assertIntegrationAccess('org-1', 'int-legado', 'profile-1')
+    ).resolves.toMatchObject({ id: 'int-legado' });
+  });
+
+  it('getExecution repassa o flowId ao repositorio', async () => {
+    mockRepository.getExecution.mockResolvedValue({ id: 'exec-1' });
+
+    await service.getExecution('org-1', 'exec-1', 'flow-1');
+
+    expect(mockRepository.getExecution).toHaveBeenCalledWith('org-1', 'exec-1', 'flow-1');
+  });
+
+  it('quickUpdateFlow responde 403 quando o flow aponta para integracao de outro perfil', async () => {
+    mockRepository.getFlow.mockResolvedValue({ id: 'flow-1', integrationId: 'int-1' });
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: 'profile-outro',
+    });
+
+    await expect(
+      service.quickUpdateFlow('org-1', 'flow-1', { name: 'x', integrationId: 'int-1' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 403 });
+    expect(mockRepository.updateFlow).not.toHaveBeenCalled();
   });
 });

@@ -10,10 +10,24 @@ import {
   Query,
   UploadedFile,
   UseInterceptors,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiSecurity,
+  ApiTags,
+} from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { pricing } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/pricing';
+import { UpdateIntegrationSettingsDto } from '@gitroom/nestjs-libraries/dtos/integrations/update.integration.settings.dto';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { GetPublicApiProfileId } from '@gitroom/nestjs-libraries/user/public.api.profile.from.request';
+import { PublicApiScopeService } from '@gitroom/nestjs-libraries/services/public-api-scope.service';
 import { Organization } from '@prisma/client';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { CheckPolicies } from '@gitroom/backend/services/auth/permissions/permissions.ability';
@@ -31,18 +45,15 @@ import { VideoFunctionDto } from '@gitroom/nestjs-libraries/dtos/videos/video.fu
 import { UploadDto } from '@gitroom/nestjs-libraries/dtos/media/upload.dto';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { GetNotificationsDto } from '@gitroom/nestjs-libraries/dtos/notifications/get.notifications.dto';
-import axios from 'axios';
-import { Readable } from 'stream';
-import { lookup, extension } from 'mime-types';
 import * as Sentry from '@sentry/nestjs';
 import { socialIntegrationList, IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { getValidationSchemas } from '@gitroom/nestjs-libraries/chat/validation.schemas.helper';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { timer } from '@gitroom/helpers/utils/timer';
-import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 
 @ApiTags('Public API')
+@ApiSecurity('api-key')
 @Controller('/public/v1')
 export class PublicIntegrationsController {
   private storage = UploadFactory.createStorage();
@@ -53,14 +64,16 @@ export class PublicIntegrationsController {
     private _mediaService: MediaService,
     private _notificationService: NotificationService,
     private _integrationManager: IntegrationManager,
-    private _refreshIntegrationService: RefreshIntegrationService
+    private _refreshIntegrationService: RefreshIntegrationService,
+    private _scope: PublicApiScopeService
   ) {}
 
   @Post('/upload')
   @UseInterceptors(FileInterceptor('file'))
   async uploadSimple(
     @GetOrgFromRequest() org: Organization,
-    @UploadedFile('file') file: Express.Multer.File
+    @UploadedFile('file') file: Express.Multer.File,
+    @GetPublicApiProfileId() publicApiProfileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
     if (!file) {
@@ -68,82 +81,94 @@ export class PublicIntegrationsController {
     }
 
     const getFile = await this.storage.uploadFile(file);
-    return this._mediaService.saveFile(
+    const media = await this._mediaService.saveFile(
       org.id,
       getFile.originalname,
-      getFile.path
+      getFile.path,
+      undefined,
+      publicApiProfileId
     );
+    return { id: media.id, path: media.path };
   }
 
   @Post('/upload-from-url')
   async uploadsFromUrl(
     @GetOrgFromRequest() org: Organization,
-    @Body() body: UploadDto
+    @Body() body: UploadDto,
+    @GetPublicApiProfileId() publicApiProfileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const response = await axios.get(body.url, {
-      responseType: 'arraybuffer',
-    });
-
-    const buffer = Buffer.from(response.data);
-    // AxiosHeaderValue agora é union (string | string[] | number | boolean);
-    // só fazemos split em string.
-    const contentTypeHeader = response.headers?.['content-type'];
-    const responseMime =
-      typeof contentTypeHeader === 'string'
-        ? contentTypeHeader.split(';')[0]?.trim()
-        : undefined;
-    const urlMime = lookup(body?.url?.split?.('?')?.[0]);
-    const mimetype = (urlMime || responseMime || 'image/jpeg') as string;
-    const ext = extension(mimetype) || 'jpg';
-
-    const getFile = await this.storage.uploadFile({
-      buffer,
-      mimetype,
-      size: buffer.length,
-      path: '',
-      fieldname: '',
-      destination: '',
-      stream: new Readable(),
-      filename: '',
-      originalname: `upload.${ext}`,
-      encoding: '',
-    });
-
-    return this._mediaService.saveFile(
+    const media = await this._mediaService.uploadFromUrl(
       org.id,
-      getFile.originalname,
-      getFile.path
+      body.url,
+      undefined,
+      publicApiProfileId
     );
+    return { id: media.id, path: media.path };
   }
 
   @Get('/find-slot/:id')
+  @ApiResponse({ status: 403, description: 'Canal de outro perfil' })
+  @ApiResponse({ status: 404, description: 'Canal inexistente' })
   async findSlotIntegration(
     @GetOrgFromRequest() org: Organization,
-    @Param('id') id?: string
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Param('id') id: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    return { date: await this._postsService.findFreeDateTime(org.id, id) };
+    await this._integrationService.getIntegrationInScope(
+      org.id,
+      id,
+      publicApiProfileId
+    );
+    return {
+      date: await this._postsService.findFreeDateTime(
+        org.id,
+        id,
+        publicApiProfileId
+      ),
+    };
   }
 
   @Get('/posts')
+  @ApiQuery({ name: 'profileId', required: false })
+  @ApiResponse({ status: 403, description: 'Perfil de outra chave' })
   async getPosts(
     @GetOrgFromRequest() org: Organization,
-    @Query() query: GetPostsDto
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Query() query: GetPostsDto & { profileId?: string }
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const posts = await this._postsService.getPosts(org.id, query);
+    // Chave de perfil ve so os posts do perfil (mesma regra do dashboard).
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
+      publicApiProfileId,
+      query.profileId
+    );
+    const posts = await this._postsService.getPosts(
+      org.id,
+      query,
+      effectiveProfileId
+    );
     return {
       posts,
-      // comments,
     };
   }
 
   @Post('/posts')
+  @ApiOperation({
+    summary: 'Criar, agendar ou editar posts',
+    description:
+      'Upsert: reenviar com o mesmo `group` e o mesmo `posts[].value[].id` edita em vez de criar. ' +
+      'Num grupo multi-canal, reenvie TODOS os canais do grupo — os que ficarem de fora são removidos. ' +
+      'Ids/grupos de outro perfil (ou de outra organização) respondem 404.',
+  })
+  @ApiResponse({ status: 404, description: 'Post ou grupo fora do seu escopo' })
   @CheckPolicies([AuthorizationActions.Create, Sections.POSTS_PER_MONTH])
   async createPost(
     @GetOrgFromRequest() org: Organization,
-    @Body() rawBody: any
+    @Body() rawBody: any,
+    @GetPublicApiProfileId() publicApiProfileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
     const body = await this._postsService.mapTypeToPost(
@@ -152,28 +177,47 @@ export class PublicIntegrationsController {
       rawBody.type === 'draft'
     );
     body.type = rawBody.type;
+    // Upsert: ids/grupos do corpo precisam ser deste perfil/org (404).
+    await this._postsService.assertPostBodyInScope(
+      org.id,
+      body,
+      publicApiProfileId
+    );
 
-    console.log(JSON.stringify(body, null, 2));
-    return this._postsService.createPost(org.id, body);
+    // Carimba o post com o perfil da chave de API (quando for chave de perfil),
+    // para que ele apareca no dashboard filtrado por perfil. Sem isso o post
+    // nasce com profileId null e fica invisivel na visao do perfil.
+    return this._postsService.createPost(org.id, body, publicApiProfileId);
   }
 
   @Delete('/posts/:id')
+  @ApiResponse({ status: 404, description: 'Post fora do seu escopo' })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async deletePost(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('id') id: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const getPostById = await this._postsService.getPost(org.id, id);
-    return this._postsService.deletePost(org.id, getPostById.group);
+    const post = await this._postsService.getPostInScope(
+      org.id,
+      id,
+      publicApiProfileId
+    );
+    return this._postsService.deletePost(org.id, post.group, publicApiProfileId);
   }
 
   @Delete('/posts/group/:group')
-  deletePostByGroup(
+  @ApiResponse({ status: 404, description: 'Grupo fora do seu escopo' })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  async deletePostByGroup(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('group') group: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    return this._postsService.deletePost(org.id, group);
+    await this._postsService.getGroupInScope(org.id, group, publicApiProfileId);
+    return this._postsService.deletePost(org.id, group, publicApiProfileId);
   }
 
   @Get('/is-connected')
@@ -189,10 +233,11 @@ export class PublicIntegrationsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    if (publicApiProfileId && profileId && profileId !== publicApiProfileId) {
-      throw new HttpException({ msg: 'Profile key cannot access another profile' }, 403);
-    }
-    const effectiveProfileId = publicApiProfileId ?? profileId;
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
+      publicApiProfileId,
+      profileId
+    );
     return (await this._integrationService.getIntegrationsList(org.id, effectiveProfileId)).map(
       (org) => ({
         id: org.id,
@@ -212,46 +257,31 @@ export class PublicIntegrationsController {
   }
 
   @Get('/social/:integration')
+  @ApiOperation({
+    summary: 'URL de OAuth para conectar um canal',
+    description:
+      'Abra a URL no navegador para dar o consentimento. O canal nasce no perfil da chave (ou do `?profileId`).',
+  })
+  @ApiQuery({ name: 'profileId', required: false })
+  @ApiResponse({ status: 400, description: 'Provedor não permitido ou que exige URL externa' })
   @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
   async getIntegrationUrl(
     @Param('integration') integration: string,
     @Query('refresh') refresh: string,
-    @GetOrgFromRequest() org: Organization
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId?: string,
+    @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    if (
-      !this._integrationManager
-        .getAllowedSocialsIntegrations()
-        .includes(integration)
-    ) {
-      throw new HttpException({ msg: 'Integration not allowed' }, 400);
-    }
-
-    const integrationProvider =
-      this._integrationManager.getSocialIntegration(integration);
-
-    if (integrationProvider.externalUrl) {
-      throw new HttpException(
-        { msg: 'This integration requires an external URL and is not supported via the public API' },
-        400
-      );
-    }
-
-    try {
-      const { codeVerifier, state, url } =
-        await integrationProvider.generateAuthUrl();
-
-      if (refresh) {
-        await ioRedis.set(`refresh:${state}`, refresh, 'EX', 3600);
-      }
-
-      await ioRedis.set(`organization:${state}`, org.id, 'EX', 3600);
-      await ioRedis.set(`login:${state}`, codeVerifier, 'EX', 3600);
-
-      return { url };
-    } catch (err) {
-      throw new HttpException({ msg: 'Failed to generate auth URL' }, 500);
-    }
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
+      publicApiProfileId,
+      profileId
+    );
+    return this._integrationService.createAuthUrl(org.id, integration, {
+      profileId: effectiveProfileId,
+      refresh: refresh || undefined,
+    });
   }
 
   @Get('/notifications')
@@ -286,11 +316,20 @@ export class PublicIntegrationsController {
   }
 
   @Delete('/integrations/:id')
+  @ApiResponse({ status: 403, description: 'Canal de outro perfil' })
+  @ApiResponse({ status: 404, description: 'Canal inexistente' })
+  @Throttle({ default: { limit: 30, ttl: 3600_000 } })
   async deleteChannel(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('id') id: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
+    await this._integrationService.getIntegrationInScope(
+      org.id,
+      id,
+      publicApiProfileId
+    );
     const isTherePosts = await this._integrationService.getPostsForChannel(
       org.id,
       id
@@ -304,15 +343,126 @@ export class PublicIntegrationsController {
     return this._integrationService.deleteChannel(org.id, id);
   }
 
+  @Post('/integrations/:id/enable')
+  @ApiOperation({ summary: 'Reativar um canal desativado' })
+  @ApiParam({ name: 'id', description: 'ID do canal' })
+  @ApiQuery({ name: 'profileId', required: false })
+  @ApiResponse({ status: 403, description: 'Canal de outro perfil' })
+  @ApiResponse({ status: 404, description: 'Canal inexistente' })
+  @Throttle({ default: { limit: 30, ttl: 3600_000 } })
+  async enableChannel(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Param('id') id: string,
+    @Query('profileId') profileId?: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
+      publicApiProfileId,
+      profileId
+    );
+    await this._integrationService.getIntegrationInScope(
+      org.id,
+      id,
+      effectiveProfileId
+    );
+    return this._integrationService.enableChannel(
+      org.id,
+      (org as any)?.subscription?.totalChannels || pricing.FREE.channel,
+      id,
+      effectiveProfileId
+    );
+  }
+
+  @Post('/integrations/:id/disable')
+  @ApiOperation({
+    summary: 'Desativar um canal (posts agendados nele deixam de sair)',
+  })
+  @ApiParam({ name: 'id', description: 'ID do canal' })
+  @ApiQuery({ name: 'profileId', required: false })
+  @ApiResponse({ status: 403, description: 'Canal de outro perfil' })
+  @ApiResponse({ status: 404, description: 'Canal inexistente' })
+  @Throttle({ default: { limit: 30, ttl: 3600_000 } })
+  async disableChannel(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Param('id') id: string,
+    @Query('profileId') profileId?: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
+      publicApiProfileId,
+      profileId
+    );
+    await this._integrationService.getIntegrationInScope(
+      org.id,
+      id,
+      effectiveProfileId
+    );
+    return this._integrationService.disableChannel(org.id, id);
+  }
+
+  @Post('/integrations/:id/settings')
+  @ApiOperation({
+    summary: 'Atualizar as configurações do provedor de um canal',
+    description:
+      'Mesmo formato de `GET /integration-settings/:id`: array de `{ title, value }`.',
+  })
+  @ApiParam({ name: 'id', description: 'ID do canal' })
+  @ApiQuery({ name: 'profileId', required: false })
+  @ApiBody({ type: UpdateIntegrationSettingsDto })
+  @ApiResponse({ status: 403, description: 'Canal de outro perfil' })
+  @ApiResponse({ status: 404, description: 'Canal inexistente' })
+  @Throttle({ default: { limit: 30, ttl: 3600_000 } })
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    })
+  )
+  async updateProviderSettings(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Param('id') id: string,
+    @Query('profileId') profileId: string | undefined,
+    @Body() body: UpdateIntegrationSettingsDto
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
+      publicApiProfileId,
+      profileId
+    );
+    await this._integrationService.getIntegrationInScope(
+      org.id,
+      id,
+      effectiveProfileId
+    );
+    await this._integrationService.updateProviderSettings(
+      org.id,
+      id,
+      body.additionalSettings
+    );
+    return { ok: true };
+  }
+
   @Get('/integration-settings/:id')
+  @ApiResponse({ status: 403, description: 'Canal de outro perfil' })
+  @ApiResponse({ status: 404, description: 'Canal inexistente' })
   async getIntegrationSettings(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('id') id: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const loadIntegration = await this._integrationService.getIntegrationById(
+    // 404/403 em vez de TypeError (500) quando o id nao existe.
+    const loadIntegration = await this._integrationService.getIntegrationInScope(
       org.id,
-      id
+      id,
+      publicApiProfileId
     );
 
     const verified =
@@ -348,21 +498,28 @@ export class PublicIntegrationsController {
   }
 
   @Get('/posts/:id/missing')
+  @ApiResponse({ status: 404, description: 'Post fora do seu escopo' })
   async getMissingContent(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('id') id: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
+    await this._postsService.getPostInScope(org.id, id, publicApiProfileId);
     return this._postsService.getMissingContent(org.id, id);
   }
 
   @Put('/posts/:id/release-id')
+  @ApiResponse({ status: 404, description: 'Post fora do seu escopo' })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async updateReleaseId(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('id') id: string,
     @Body('releaseId') releaseId: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
+    await this._postsService.getPostInScope(org.id, id, publicApiProfileId);
     return this._postsService.updateReleaseId(org.id, id, releaseId);
   }
 

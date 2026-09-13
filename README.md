@@ -133,7 +133,11 @@ O Robô MultiPost possui API pública disponível em `/api/`. Você pode usar es
 
 - Suporte a webhooks para eventos de publicação
 - Compatível com o node do n8n para Postiz (`n8n-nodes-postiz`)
-- O limite padrão da API é de 30 requisições por hora (configurável via variável `API_LIMIT`)
+- Automações de comentário/story e bot de DM também por API: [`docs/api/automacoes-e-dm.md`](docs/api/automacoes-e-dm.md)
+- Posts (detalhe, data, comentário), biblioteca de mídia e canais (ativar/desativar/configurar) por API: [`docs/api/posts-midia-canais.md`](docs/api/posts-midia-canais.md)
+- **MCP** (agentes de IA — Claude, ChatGPT, n8n): 43 tools com paridade total com a API pública em `/api/mcp`: [`docs/api/mcp.md`](docs/api/mcp.md)
+- Documentação interativa (Swagger) em `/api/docs` — clique em **Authorize** e cole a chave de API
+- Limites de requisição: `POST /public/v1/posts` usa 30 por hora (configurável via `API_LIMIT`); as rotas de automação têm limites próprios (ver o guia acima)
 
 ## Tech Stack
 

@@ -1,6 +1,7 @@
 import { PrismaRepository } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { SaveMediaInformationDto } from '@gitroom/nestjs-libraries/dtos/media/save.media.information.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class MediaRepository {
@@ -38,6 +39,18 @@ export class MediaRepository {
     });
   }
 
+  // Sem filtro de perfil de proposito: o service distingue 404 (nao existe na
+  // org) de 403 (existe, mas e de outro perfil).
+  getMediaForOrg(org: string, id: string) {
+    return this._media.model.media.findFirst({
+      where: {
+        id,
+        organizationId: org,
+        deletedAt: null,
+      },
+    });
+  }
+
   deleteMedia(org: string, id: string, profileId?: string) {
     return this._media.model.media.update({
       where: {
@@ -51,11 +64,16 @@ export class MediaRepository {
     });
   }
 
-  saveMediaInformation(org: string, data: SaveMediaInformationDto) {
+  saveMediaInformation(
+    org: string,
+    data: SaveMediaInformationDto,
+    profileId?: string
+  ) {
     return this._media.model.media.update({
       where: {
         id: data.id,
         organizationId: org,
+        ...(profileId ? { OR: [{ profileId }, { profileId: null }] } : {}),
       },
       data: {
         alt: data.alt,
@@ -74,27 +92,68 @@ export class MediaRepository {
     });
   }
 
-  async getMedia(org: string, page: number, profileId?: string) {
+  getDeletableMedia(cutoff: Date, orgId?: string) {
+    return this._media.model.media.findMany({
+      where: {
+        deletedAt: null,
+        createdAt: { lt: cutoff },
+        ...(orgId ? { organizationId: orgId } : {}),
+      },
+      select: {
+        id: true,
+        organizationId: true,
+        profileId: true,
+        path: true,
+        thumbnail: true,
+      },
+    });
+  }
+
+  async getMediaStats(org: string, profileId?: string) {
+    const where: Prisma.MediaWhereInput = {
+      organizationId: org,
+      deletedAt: null,
+      ...(profileId ? { OR: [{ profileId }, { profileId: null }] } : {}),
+    };
+    const total = await this._media.model.media.count({ where });
+    const sum = await this._media.model.media.aggregate({
+      where,
+      _sum: { fileSize: true },
+    });
+    return { total, totalSizeBytes: sum._sum.fileSize || 0 };
+  }
+
+  async getMedia(
+    org: string,
+    page: number,
+    profileId?: string,
+    range?: { from?: string; to?: string }
+  ) {
     const pageNum = (page || 1) - 1;
     // Show media for the active profile + unscoped media (profileId is null)
     const profileFilter = profileId
       ? { OR: [{ profileId }, { profileId: null }] }
       : {};
-    const query = {
-      where: {
-        organization: {
-          id: org,
-        },
-        ...profileFilter,
-      },
+    const createdAtFilter =
+      range?.from || range?.to
+        ? {
+            createdAt: {
+              ...(range.from ? { gte: new Date(range.from) } : {}),
+              ...(range.to ? { lte: new Date(range.to) } : {}),
+            },
+          }
+        : {};
+    // Um unico `where` para contagem e listagem: antes a contagem ignorava
+    // deletedAt e midias apagadas inflavam o numero de paginas.
+    const where: Prisma.MediaWhereInput = {
+      organizationId: org,
+      deletedAt: null,
+      ...profileFilter,
+      ...createdAtFilter,
     };
-    const pages = Math.ceil((await this._media.model.media.count(query)) / 18);
+    const pages = Math.ceil((await this._media.model.media.count({ where })) / 18);
     const results = await this._media.model.media.findMany({
-      where: {
-        organizationId: org,
-        deletedAt: null,
-        ...profileFilter,
-      },
+      where,
       orderBy: {
         createdAt: 'desc',
       },
