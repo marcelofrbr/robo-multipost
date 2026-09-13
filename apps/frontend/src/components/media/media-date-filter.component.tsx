@@ -1,6 +1,6 @@
 'use client';
 
-import { FC, useCallback } from 'react';
+import { FC, useCallback, useState } from 'react';
 import clsx from 'clsx';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { getTimezone } from '@gitroom/frontend/components/layout/set.timezone';
@@ -18,8 +18,10 @@ const PRESETS: { key: MediaDatePreset; label: string; fallback: string }[] = [
   { key: 'thisMonth', label: 'media_filter_this_month', fallback: 'This month' },
 ];
 
+// `color-scheme` acompanha o tema: sem isso o icone do calendario nativo some
+// no escuro e o popup abre claro.
 const inputClass =
-  'bg-newBgColorInner h-[36px] border-newTableBorder border rounded-[8px] text-textColor text-[13px] px-[10px] outline-none';
+  'bg-newBgColorInner h-[36px] border-newTableBorder border rounded-[8px] text-textColor text-[13px] px-[10px] outline-none [color-scheme:light] dark:[color-scheme:dark]';
 
 const chipClass = (active: boolean) =>
   clsx(
@@ -40,28 +42,45 @@ export const MediaDateFilter: FC<{
 }> = ({ value, onChange }) => {
   const t = useT();
   const tz = getTimezone();
+  // Ultimo atalho clicado: evita dois chips "ativos" quando dois atalhos
+  // produzem o mesmo periodo (ex.: Hoje e Este mes no dia 1). Continua exigindo
+  // que o periodo bata, para desativar quando o pai limpa o filtro.
+  const [activePreset, setActivePreset] = useState<MediaDatePreset | null>(
+    null
+  );
 
   const isPresetActive = useCallback(
     (preset: MediaDatePreset) => {
+      if (activePreset !== preset) {
+        return false;
+      }
       const range = presetDateRange(preset, new Date(), tz);
       return range.from === value.from && range.to === value.to;
     },
-    [value, tz]
+    [activePreset, value, tz]
   );
 
   const applyPreset = useCallback(
-    (preset: MediaDatePreset) => () =>
-      onChange(presetDateRange(preset, new Date(), tz)),
+    (preset: MediaDatePreset) => () => {
+      setActivePreset(preset);
+      onChange(presetDateRange(preset, new Date(), tz));
+    },
     [onChange, tz]
   );
 
   const setFrom = useCallback(
-    (from: string) => onChange({ ...value, from: from || undefined }),
+    (from: string) => {
+      setActivePreset(null);
+      onChange({ ...value, from: from || undefined });
+    },
     [onChange, value]
   );
 
   const setTo = useCallback(
-    (to: string) => onChange({ ...value, to: to || undefined }),
+    (to: string) => {
+      setActivePreset(null);
+      onChange({ ...value, to: to || undefined });
+    },
     [onChange, value]
   );
 
@@ -111,7 +130,10 @@ export const MediaDateFilter: FC<{
         <button
           type="button"
           className="h-[36px] px-[12px] rounded-[8px] text-[13px] text-textColor underline"
-          onClick={() => onChange({})}
+          onClick={() => {
+            setActivePreset(null);
+            onChange({});
+          }}
         >
           {t('media_filter_clear', 'Clear')}
         </button>

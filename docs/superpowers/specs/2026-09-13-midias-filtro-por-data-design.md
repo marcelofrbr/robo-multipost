@@ -52,8 +52,8 @@ Filtrar a listagem pela **data de upload** (`Media.createdAt`), com atalhos ráp
 | Situação | Comportamento |
 |---|---|
 | `from`/`to` não ISO | 400 (DTO) |
-| `from > to` | UI impede (o campo "Até" não aceita menor que "De"); servidor responde 400 por segurança |
-| Falha de rede ao filtrar | SWR mantém o último resultado; toaster de erro como nas demais telas |
+| `from > to` | Campos com `min`/`max` cruzados, aviso inline, e o grid mantém o **último período válido** (a API nunca recebe o par inválido); o servidor responde 400 por segurança |
+| Falha de rede ao filtrar | Mesmo comportamento da listagem sem filtro (o `MediaBox` não trata `response.ok`): a grade mostra o estado vazio até a próxima tentativa; sem toaster |
 
 ## Testes
 
