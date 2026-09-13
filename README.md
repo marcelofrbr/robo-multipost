@@ -134,6 +134,7 @@ O Robô MultiPost possui API pública disponível em `/api/`. Você pode usar es
 - Suporte a webhooks para eventos de publicação
 - Compatível com o node do n8n para Postiz (`n8n-nodes-postiz`)
 - Automações de comentário/story e bot de DM também por API: [`docs/api/automacoes-e-dm.md`](docs/api/automacoes-e-dm.md)
+- Posts (detalhe, data, comentário), biblioteca de mídia e canais (ativar/desativar/configurar) por API: [`docs/api/posts-midia-canais.md`](docs/api/posts-midia-canais.md)
 - Documentação interativa (Swagger) em `/api/docs` — clique em **Authorize** e cole a chave de API
 - Limites de requisição: `POST /public/v1/posts` usa 30 por hora (configurável via `API_LIMIT`); as rotas de automação têm limites próprios (ver o guia acima)
 

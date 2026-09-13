@@ -87,3 +87,5 @@ A automação nasce **ativa** (`status: ACTIVE`); ao ativar, o app inscreve a co
 | 429 | Limite de requisições: 20/hora para criar, editar, ativar e ligar o bot (cada uma dispara assinatura de webhook na Meta); 60/minuto nas leituras de posts, stories e webhook-status; 60/hora para resolver escalações |
 
 Todas as rotas também aparecem na documentação interativa: `https://<seu-dominio>/api/docs` (Swagger, seção **Automações (Flows)**) — clique em **Authorize** e cole a chave de API.
+
+Guia irmão: [Posts, mídia e canais](posts-midia-canais.md).
