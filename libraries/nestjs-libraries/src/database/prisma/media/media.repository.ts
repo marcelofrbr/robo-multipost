@@ -106,27 +106,37 @@ export class MediaRepository {
     return { total, totalSizeBytes: sum._sum.fileSize || 0 };
   }
 
-  async getMedia(org: string, page: number, profileId?: string) {
+  async getMedia(
+    org: string,
+    page: number,
+    profileId?: string,
+    range?: { from?: string; to?: string }
+  ) {
     const pageNum = (page || 1) - 1;
     // Show media for the active profile + unscoped media (profileId is null)
     const profileFilter = profileId
       ? { OR: [{ profileId }, { profileId: null }] }
       : {};
-    const query = {
-      where: {
-        organization: {
-          id: org,
-        },
-        ...profileFilter,
-      },
+    const createdAtFilter =
+      range?.from || range?.to
+        ? {
+            createdAt: {
+              ...(range.from ? { gte: new Date(range.from) } : {}),
+              ...(range.to ? { lte: new Date(range.to) } : {}),
+            },
+          }
+        : {};
+    // Um unico `where` para contagem e listagem: antes a contagem ignorava
+    // deletedAt e midias apagadas inflavam o numero de paginas.
+    const where: Prisma.MediaWhereInput = {
+      organizationId: org,
+      deletedAt: null,
+      ...profileFilter,
+      ...createdAtFilter,
     };
-    const pages = Math.ceil((await this._media.model.media.count(query)) / 18);
+    const pages = Math.ceil((await this._media.model.media.count({ where })) / 18);
     const results = await this._media.model.media.findMany({
-      where: {
-        organizationId: org,
-        deletedAt: null,
-        ...profileFilter,
-      },
+      where,
       orderBy: {
         createdAt: 'desc',
       },
