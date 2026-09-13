@@ -1,3 +1,5 @@
+import { safeFetch } from './ssrf.guard';
+
 /**
  * Resolve um `path` para `{ buffer, contentType, extension }` aceitando
  * tanto URLs HTTP(S) quanto data URLs (`data:image/png;base64,...`).
@@ -26,12 +28,13 @@ export async function loadFromUrlOrDataUrl(path: string): Promise<{
     const buffer = isBase64
       ? Buffer.from(data, 'base64')
       : Buffer.from(decodeURIComponent(data), 'utf8');
-    const extension =
-      contentType.split('/')[1]?.split('+')[0] || 'bin';
+    const extension = contentType.split('/')[1]?.split('+')[0] || 'bin';
     return { buffer, contentType, extension };
   }
 
-  const res = await fetch(path);
+  // safeFetch valida a URL contra SSRF (protocolo, IPs internos, DNS rebinding,
+  // redirects) antes de qualquer conexao. Data URLs ja foram tratadas acima.
+  const res = await safeFetch(path);
   const contentType =
     res?.headers?.get('content-type') ||
     res?.headers?.get('Content-Type') ||
@@ -42,4 +45,26 @@ export async function loadFromUrlOrDataUrl(path: string): Promise<{
     'bin';
   const buffer = Buffer.from(await res.arrayBuffer());
   return { buffer, contentType, extension };
+}
+
+/**
+ * Converte a URL publica de upload local (`FRONTEND_URL/uploads/...`) no
+ * caminho de filesystem real (`uploadDir/...`). Retorna `null` quando a URL
+ * nao pertence ao storage local (ex.: objeto no R2), para que o chamador
+ * decida o fallback.
+ *
+ * Necessario porque o `path` salvo no banco e a URL publica, nao o caminho
+ * em disco. Sem esse mapeamento o `removeFile` local nao apaga nada.
+ */
+export function publicUrlToLocalPath(
+  publicUrl: string,
+  uploadDir: string,
+  frontendUrl: string
+): string | null {
+  const prefix = `${frontendUrl}/uploads`;
+  if (!publicUrl.startsWith(prefix)) {
+    return null;
+  }
+  const relative = publicUrl.slice(prefix.length);
+  return `${uploadDir}${relative}`;
 }

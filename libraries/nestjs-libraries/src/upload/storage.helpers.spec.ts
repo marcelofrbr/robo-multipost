@@ -1,4 +1,31 @@
-import { loadFromUrlOrDataUrl } from './storage.helpers';
+jest.mock('dns/promises', () => ({ lookup: jest.fn() }));
+
+import { lookup } from 'dns/promises';
+import { loadFromUrlOrDataUrl, publicUrlToLocalPath } from './storage.helpers';
+
+const mockedLookup = lookup as unknown as jest.Mock;
+
+describe('publicUrlToLocalPath', () => {
+  it('deve converter a URL publica de upload no caminho de filesystem', () => {
+    expect(
+      publicUrlToLocalPath(
+        'https://app.exemplo.com/uploads/2026/06/abc.png',
+        '/data/uploads',
+        'https://app.exemplo.com'
+      )
+    ).toBe('/data/uploads/2026/06/abc.png');
+  });
+
+  it('deve retornar null quando a URL nao e do storage local', () => {
+    expect(
+      publicUrlToLocalPath(
+        'https://r2.cdn.com/abc.png',
+        '/data/uploads',
+        'https://app.exemplo.com'
+      )
+    ).toBeNull();
+  });
+});
 
 describe('loadFromUrlOrDataUrl', () => {
   let originalFetch: typeof globalThis.fetch;
@@ -36,36 +63,47 @@ describe('loadFromUrlOrDataUrl', () => {
     });
 
     it('lanca erro em data URL invalida', async () => {
-      await expect(
-        loadFromUrlOrDataUrl('data:malformed')
-      ).rejects.toThrow('data URL invalida');
+      await expect(loadFromUrlOrDataUrl('data:malformed')).rejects.toThrow(
+        'data URL invalida'
+      );
     });
   });
 
   describe('URLs HTTP', () => {
+    beforeEach(() => {
+      // Host resolve para IP publico (a guarda anti-SSRF valida o IP via DNS).
+      mockedLookup.mockReset();
+      mockedLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+    });
+
     it('faz fetch normalmente quando nao e data URL', async () => {
-      const fetchSpy = jest.fn(async () =>
-        new Response(Buffer.from([1, 2, 3]), {
-          status: 200,
-          headers: { 'content-type': 'image/jpeg' },
-        })
+      const fetchSpy = jest.fn(
+        async () =>
+          new Response(Buffer.from([1, 2, 3]), {
+            status: 200,
+            headers: { 'content-type': 'image/jpeg' },
+          })
       );
       globalThis.fetch = fetchSpy as any;
 
       const result = await loadFromUrlOrDataUrl('https://example.com/foo.jpg');
 
-      expect(fetchSpy).toHaveBeenCalledWith('https://example.com/foo.jpg');
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://example.com/foo.jpg',
+        expect.objectContaining({ redirect: 'manual' })
+      );
       expect(result.contentType).toBe('image/jpeg');
       expect(result.extension).toBe('jpeg');
       expect(result.buffer.length).toBe(3);
     });
 
     it('extrai extensao do content-type webp', async () => {
-      const fetchSpy = jest.fn(async () =>
-        new Response(Buffer.from([0]), {
-          status: 200,
-          headers: { 'content-type': 'image/webp' },
-        })
+      const fetchSpy = jest.fn(
+        async () =>
+          new Response(Buffer.from([0]), {
+            status: 200,
+            headers: { 'content-type': 'image/webp' },
+          })
       );
       globalThis.fetch = fetchSpy as any;
 
