@@ -1,4 +1,10 @@
-import { HttpException, Injectable, Logger } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { MediaRepository } from '@gitroom/nestjs-libraries/database/prisma/media/media.repository';
 import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
@@ -37,6 +43,21 @@ export class MediaService {
     private _aiTextService: AiTextService,
     private _aiVideoService: AiVideoService
   ) {}
+
+  /**
+   * Escopo da API publica: 404 se nao existe na org; 403 se pertence a outro
+   * perfil (midia sem perfil e compartilhada, como em deleteMedia/getMedia).
+   */
+  async getMediaInScope(org: string, id: string, profileId?: string) {
+    const media = await this._mediaRepository.getMediaForOrg(org, id);
+    if (!media) {
+      throw new NotFoundException('Media not found');
+    }
+    if (profileId && media.profileId && media.profileId !== profileId) {
+      throw new ForbiddenException('Media belongs to another profile');
+    }
+    return media;
+  }
 
   async deleteMedia(org: string, id: string, profileId?: string) {
     return this._mediaRepository.deleteMedia(org, id, profileId);
@@ -173,8 +194,12 @@ export class MediaService {
     return this._mediaRepository.getMediaStats(org, profileId);
   }
 
-  saveMediaInformation(org: string, data: SaveMediaInformationDto) {
-    return this._mediaRepository.saveMediaInformation(org, data);
+  saveMediaInformation(
+    org: string,
+    data: SaveMediaInformationDto,
+    profileId?: string
+  ) {
+    return this._mediaRepository.saveMediaInformation(org, data, profileId);
   }
 
   getVideoOptions() {

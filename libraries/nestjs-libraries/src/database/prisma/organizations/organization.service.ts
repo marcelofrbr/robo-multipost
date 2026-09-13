@@ -1,5 +1,5 @@
 import { CreateOrgUserDto } from '@gitroom/nestjs-libraries/dtos/auth/create.org.user.dto';
-import { HttpException, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { OrganizationRepository } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.repository';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { AddTeamMemberDto } from '@gitroom/nestjs-libraries/dtos/settings/add.team.member.dto';
@@ -68,6 +68,23 @@ export class OrganizationService {
 
   getTeam(orgId: string) {
     return this._organizationRepository.getTeam(orgId);
+  }
+
+  /**
+   * Usuario "dono" da org (SUPERADMIN) — autor de acoes feitas por chave de
+   * API que exigem userId (ex.: comentario interno num post).
+   */
+  async getOwnerUserId(orgId: string): Promise<string> {
+    const team = await this._organizationRepository.getTeam(orgId);
+    const users = team?.users ?? [];
+    const owner = users.find((u) => u.role === 'SUPERADMIN') ?? users[0];
+    if (!owner?.user?.id) {
+      throw new HttpException(
+        'Organization has no members',
+        HttpStatus.PRECONDITION_FAILED
+      );
+    }
+    return owner.user.id;
   }
 
   async setStreak(organizationId: string, type: 'start' | 'end') {

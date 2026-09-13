@@ -1,9 +1,11 @@
 import {
+  ForbiddenException,
   forwardRef,
   HttpException,
   HttpStatus,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { IntegrationRepository } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.repository';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
@@ -286,6 +288,22 @@ export class IntegrationService {
         expiresIn
       );
     }
+  }
+
+  /**
+   * Versao da API publica de validateIntegrationProfile: 404 (inexistente/
+   * apagado) e 403 (outro perfil) em vez de Error generico (500). Canal sem
+   * perfil e compartilhado — mesma regra de getIntegrationById/getIntegrationsList.
+   */
+  async getIntegrationInScope(orgId: string, integrationId: string, profileId?: string) {
+    const integration = await this._integrationRepository.getIntegrationById(orgId, integrationId);
+    if (!integration || integration.deletedAt) {
+      throw new NotFoundException('Integration not found');
+    }
+    if (profileId && integration.profileId && integration.profileId !== profileId) {
+      throw new ForbiddenException('Integration belongs to another profile');
+    }
+    return integration;
   }
 
   async validateIntegrationProfile(orgId: string, integrationId: string, profileId?: string) {

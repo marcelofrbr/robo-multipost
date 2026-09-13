@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   ValidationPipe,
+  NotFoundException,
 } from '@nestjs/common';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
 import { CreatePostDto } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
@@ -545,6 +546,34 @@ export class PostsService {
     ];
   }
 
+  /**
+   * Escopo da API publica: post precisa existir na org e, com chave de
+   * perfil, pertencer ao perfil. Posts sao estritos por perfil (getPosts e
+   * deletePost filtram profileId exato), entao fora do escopo e 404.
+   */
+  async getPostInScope(orgId: string, id: string, profileId?: string) {
+    const post = await this._postRepository.getPostById(id, orgId);
+    if (!post || post.deletedAt) {
+      throw new NotFoundException('Post not found');
+    }
+    if (profileId && post.profileId !== profileId) {
+      throw new NotFoundException('Post not found');
+    }
+    return post;
+  }
+
+  /** Mesma regra de getPostInScope, para um grupo (post multi-canal). */
+  async getGroupInScope(orgId: string, group: string, profileId?: string) {
+    const posts = await this._postRepository.getPostsByGroup(orgId, group);
+    if (!posts.length) {
+      throw new NotFoundException('Post group not found');
+    }
+    if (profileId && posts.some((p) => p.profileId !== profileId)) {
+      throw new NotFoundException('Post group not found');
+    }
+    return posts;
+  }
+
   async getPost(orgId: string, id: string, convertToJPEG = false) {
     const posts = await this.getPostsRecursively(id, true, orgId, true);
     const list = {
@@ -768,7 +797,39 @@ export class PostsService {
     } catch (err) {}
   }
 
+  /**
+   * POST /posts e um upsert por `value[].id` e o repositorio soft-deleta o
+   * resto do `group`. Sem esta checagem, um id/grupo de OUTRA org (ou de
+   * outro perfil, com chave de perfil) seria sobrescrito/apagado. Ids e
+   * grupos inexistentes sao criacao normal e passam.
+   */
+  async assertPostBodyInScope(orgId: string, body: CreatePostDto, profileId?: string) {
+    const outOfScope = (
+      owner: { organizationId: string; profileId: string | null } | null
+    ) =>
+      !!owner &&
+      (owner.organizationId !== orgId ||
+        (!!profileId && !!owner.profileId && owner.profileId !== profileId));
+
+    for (const post of body.posts || []) {
+      if (post.group) {
+        const owner = await this._postRepository.getGroupOwner(post.group);
+        if (outOfScope(owner)) {
+          throw new NotFoundException('Post group not found');
+        }
+      }
+      for (const value of post.value || []) {
+        if (!value?.id) continue;
+        const existing = await this._postRepository.getPostById(value.id);
+        if (outOfScope(existing)) {
+          throw new NotFoundException('Post not found');
+        }
+      }
+    }
+  }
+
   async createPost(orgId: string, body: CreatePostDto, profileId?: string): Promise<any[]> {
+    await this.assertPostBodyInScope(orgId, body, profileId);
     const postList = [];
     for (const post of body.posts) {
       const messages = (post.value || []).map((p) => p.content);
