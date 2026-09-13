@@ -8,7 +8,7 @@ Context file for AI coding agents. This project is **Robô MultiPost**, a fork o
 
 - **Type:** Social media scheduler (self-hosted, Docker-based)
 - **Upstream:** [gitroomhq/postiz-app](https://github.com/gitroomhq/postiz-app)
-- **Fork:** [maiconramos/robo-multipost](https://github.com/maiconramos/robo-multipost)
+- **Fork:** [marcelofrbr/robo-multipost](https://github.com/marcelofrbr/robo-multipost)
 - **License:** AGPL-3.0 (credits and attribution must be preserved)
 - **Language:** TypeScript throughout (monorepo)
 - **Package manager:** PNPM only — never use npm or yarn
@@ -199,7 +199,7 @@ Every new backend feature must have an **API contract defined first**:
 ### Remotes
 
 ```
-origin   → https://github.com/maiconramos/robo-multipost
+origin   → https://github.com/marcelofrbr/robo-multipost
 upstream → https://github.com/gitroomhq/postiz-app
 ```
 

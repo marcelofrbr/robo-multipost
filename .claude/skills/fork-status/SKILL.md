@@ -45,7 +45,7 @@ git describe --tags --abbrev=0 2>/dev/null || echo "Nenhuma tag encontrada"
 
 ### 6. Saude do CI/CD
 ```bash
-grep -c "maiconramos/robo-multipost" .github/workflows/build-containers.yml
+grep -c "github.repository_owner }}/robo-multipost" .github/workflows/build-containers.yml
 grep -c "gitroomhq" .github/workflows/build-containers.yml
 ```
 
@@ -81,7 +81,7 @@ Nao incluidos em release:   N
   - ...
 
 --- Saude ---
-Registry CI/CD:        OK (maiconramos) / ERRO (gitroomhq)
+Registry CI/CD:        OK (repository_owner = marcelofrbr) / ERRO (gitroomhq ou maiconramos)
 CHANGELOG.md:          Existe / Nao existe
 
 --- Prontidao para Release ---

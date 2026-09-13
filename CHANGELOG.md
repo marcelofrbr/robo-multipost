@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Alterado
+
+- **Repositório próprio como destino único de PRs, releases e imagens.** O clone é fork de `maiconramos/robo-multipost` (que por sua vez é fork do Postiz), e o `gh` resolvia PRs contra o repositório pai — um PR chegou a ser fechado como spam pelo workflow herdado. Agora: o hook `.claude/hooks/gh-pr-fork-guard.sh` bloqueia qualquer `gh pr` mutante que não aponte para `marcelofrbr/robo-multipost` (e ganhou fallback para `node` quando `jq` não existe — no Git Bash do Windows os hooks estavam silenciosamente inativos, o mesmo vale para `tdd-check.sh`); os workflows `build-containers.yml` e `promote-release.yml` publicam em `ghcr.io/${{ github.repository_owner }}/robo-multipost` usando o `GITHUB_TOKEN` nativo (sem depender do secret `CR_PAT`); o workflow anti-spam `pr-quality.yml` herdado foi removido; `docker-compose.yaml`, skills (`new-release`, `fork-status`, `sync-upstream`), agente `security-auditor`, `README.md` e `docs/operations/docker-release.md` passam a referenciar o repositório e o registry próprios.
+
 ### Adicionado
 
 - **Chaves de API por perfil**: cada perfil pode gerar sua própria chave de API escopada apenas às suas integrações. A chave da organização continua existindo com acesso irrestrito a todos os perfis. Chaves de perfil funcionam na REST API pública, no MCP e no CLI.

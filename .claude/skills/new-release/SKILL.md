@@ -134,7 +134,7 @@ git push origin vX.Y.Z
 
 Explicar: isso dispara o workflow `build-containers.yml` que vai buildar
 imagens Docker multi-arch (amd64 + arm64) e publicar em
-`ghcr.io/maiconramos/robo-multipost:X.Y.Z` e `:latest`.
+`ghcr.io/marcelofrbr/robo-multipost:X.Y.Z` e `:latest`.
 
 ### Passo 9: GitHub Release (obrigatorio)
 
@@ -144,13 +144,13 @@ Escrever as notas em um arquivo temporario e usar `--notes-file`:
 ```bash
 # Escrever notas em /tmp/release-notes.md com conteudo do CHANGELOG da versao
 gh release create vX.Y.Z \
-  -R maiconramos/robo-multipost \
+  -R marcelofrbr/robo-multipost \
   --title "vX.Y.Z: <descricao curta>" \
   --latest \
   --notes-file /tmp/release-notes.md
 ```
 
-IMPORTANTE: Sempre usar `-R maiconramos/robo-multipost` (o `gh` pode apontar para o upstream).
+IMPORTANTE: Sempre usar `-R marcelofrbr/robo-multipost` (o `gh` pode apontar para o upstream).
 Sempre usar `--notes-file` (o flag `--body` nao existe no `gh release create`).
 
 ### Passo 10: Voltar para main
@@ -169,14 +169,14 @@ Tag:             vX.Y.Z (anotada)
 CHANGELOG.md:    Atualizado
 package.json:    X.Y.Z
 version.txt:     X.Y.Z
-GitHub Release:  https://github.com/maiconramos/robo-multipost/releases/tag/vX.Y.Z
+GitHub Release:  https://github.com/marcelofrbr/robo-multipost/releases/tag/vX.Y.Z
 
 CI/CD:
-  GitHub Actions: https://github.com/maiconramos/robo-multipost/actions
-  Imagem Docker:  ghcr.io/maiconramos/robo-multipost:X.Y.Z + :latest
+  GitHub Actions: https://github.com/marcelofrbr/robo-multipost/actions
+  Imagem Docker:  ghcr.io/marcelofrbr/robo-multipost:X.Y.Z + :latest
 
 Para atualizar na VPS:
-  docker pull ghcr.io/maiconramos/robo-multipost:X.Y.Z
+  docker pull ghcr.io/marcelofrbr/robo-multipost:X.Y.Z
   docker compose up -d postiz
 ```
 
@@ -258,7 +258,7 @@ git push origin vX.Y.Z-rc.N
 
 Explicar: isso dispara o workflow `build-containers.yml` que vai buildar
 a imagem Docker mas **NAO atualizar :latest**. A imagem fica disponivel
-apenas como `ghcr.io/maiconramos/robo-multipost:X.Y.Z-rc.N`.
+apenas como `ghcr.io/marcelofrbr/robo-multipost:X.Y.Z-rc.N`.
 
 ### Passo 7: GitHub Release (obrigatorio)
 
@@ -273,13 +273,13 @@ Escrever as notas em um arquivo temporario e criar o release:
 ```bash
 # Escrever notas em /tmp/release-notes.md
 gh release create vX.Y.Z-rc.N \
-  -R maiconramos/robo-multipost \
+  -R marcelofrbr/robo-multipost \
   --title "vX.Y.Z-rc.N: <descricao curta>" \
   --prerelease \
   --notes-file /tmp/release-notes.md
 ```
 
-IMPORTANTE: Sempre usar `-R maiconramos/robo-multipost` (o `gh` pode apontar para o upstream).
+IMPORTANTE: Sempre usar `-R marcelofrbr/robo-multipost` (o `gh` pode apontar para o upstream).
 Sempre usar `--notes-file` (o flag `--body` nao existe no `gh release create`).
 Sempre usar `--prerelease` para marcar como pre-release.
 
@@ -290,7 +290,7 @@ Incluir no final das notas:
 > **Pre-release** — para teste. Nao atualiza `:latest`.
 >
 > ```bash
-> docker pull ghcr.io/maiconramos/robo-multipost:X.Y.Z-rc.N
+> docker pull ghcr.io/marcelofrbr/robo-multipost:X.Y.Z-rc.N
 > ```
 ```
 
@@ -303,15 +303,15 @@ Versao:          X.Y.Z-rc.N
 Tag:             vX.Y.Z-rc.N (anotada)
 package.json:    X.Y.Z-rc.N
 version.txt:     X.Y.Z-rc.N
-GitHub Release:  https://github.com/maiconramos/robo-multipost/releases/tag/vX.Y.Z-rc.N (pre-release)
+GitHub Release:  https://github.com/marcelofrbr/robo-multipost/releases/tag/vX.Y.Z-rc.N (pre-release)
 
 CI/CD:
-  GitHub Actions: https://github.com/maiconramos/robo-multipost/actions
-  Imagem Docker:  ghcr.io/maiconramos/robo-multipost:X.Y.Z-rc.N
+  GitHub Actions: https://github.com/marcelofrbr/robo-multipost/actions
+  Imagem Docker:  ghcr.io/marcelofrbr/robo-multipost:X.Y.Z-rc.N
   :latest:        NAO ATUALIZADO (pre-release)
 
 Para testar esta RC:
-  docker pull ghcr.io/maiconramos/robo-multipost:X.Y.Z-rc.N
+  docker pull ghcr.io/marcelofrbr/robo-multipost:X.Y.Z-rc.N
 
 Quando estiver satisfeito com o teste:
   /new-release promote
@@ -426,13 +426,13 @@ Escrever as notas em um arquivo temporario e usar `--notes-file`:
 ```bash
 # Escrever notas em /tmp/release-notes.md com conteudo do CHANGELOG da versao
 gh release create vX.Y.Z \
-  -R maiconramos/robo-multipost \
+  -R marcelofrbr/robo-multipost \
   --title "vX.Y.Z: <descricao curta>" \
   --latest \
   --notes-file /tmp/release-notes.md
 ```
 
-IMPORTANTE: Sempre usar `-R maiconramos/robo-multipost` (o `gh` pode apontar para o upstream).
+IMPORTANTE: Sempre usar `-R marcelofrbr/robo-multipost` (o `gh` pode apontar para o upstream).
 Sempre usar `--notes-file` (o flag `--body` nao existe no `gh release create`).
 
 ### Passo 11: Voltar para main
@@ -452,15 +452,15 @@ Tag:             vX.Y.Z (anotada)
 CHANGELOG.md:    Atualizado
 package.json:    X.Y.Z
 version.txt:     X.Y.Z
-GitHub Release:  https://github.com/maiconramos/robo-multipost/releases/tag/vX.Y.Z
+GitHub Release:  https://github.com/marcelofrbr/robo-multipost/releases/tag/vX.Y.Z
 
 CI/CD:
-  Promote:        https://github.com/maiconramos/robo-multipost/actions (re-tag sem rebuild)
+  Promote:        https://github.com/marcelofrbr/robo-multipost/actions (re-tag sem rebuild)
   Build backup:   Tambem disparado via tag vX.Y.Z
-  Imagem Docker:  ghcr.io/maiconramos/robo-multipost:X.Y.Z + :latest
+  Imagem Docker:  ghcr.io/marcelofrbr/robo-multipost:X.Y.Z + :latest
 
 Para atualizar na VPS:
-  docker pull ghcr.io/maiconramos/robo-multipost:X.Y.Z
+  docker pull ghcr.io/marcelofrbr/robo-multipost:X.Y.Z
   docker compose up -d postiz
 ```
 
@@ -475,7 +475,7 @@ Para atualizar na VPS:
 - A tag deve ser ANOTADA (git tag -a), nao lightweight
 - A versao no package.json NAO tem prefixo v (ex: "0.3.0", nao "v0.3.0")
 - A tag no git TEM prefixo v (ex: v0.3.0)
-- A imagem Docker NAO tem prefixo v (ex: ghcr.io/maiconramos/robo-multipost:0.3.0)
+- A imagem Docker NAO tem prefixo v (ex: ghcr.io/marcelofrbr/robo-multipost:0.3.0)
   O workflow strip o "v" automaticamente: tag v0.3.0 -> imagem :0.3.0
 - Pre-releases (RC) NAO passam pela branch `release` — sao tags em `main`
 - Pre-releases NAO atualizam `:latest` no Docker

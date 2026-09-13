@@ -7,7 +7,7 @@ on:
 
 jobs:
   close-issues:
-    if: github.repository == 'maiconramos/robo-multipost'
+    if: github.repository == 'marcelofrbr/robo-multipost'
     runs-on: ubuntu-latest
     permissions:
       issues: write
