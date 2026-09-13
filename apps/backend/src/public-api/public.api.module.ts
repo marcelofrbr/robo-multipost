@@ -11,10 +11,19 @@ import { CodesService } from '@gitroom/nestjs-libraries/services/codes.service';
 import { PublicIntegrationsController } from '@gitroom/backend/public-api/routes/v1/public.integrations.controller';
 import { PublicProfilesController } from '@gitroom/backend/public-api/routes/v1/public.profiles.controller';
 import { PublicFlowsController } from '@gitroom/backend/public-api/routes/v1/public.flows.controller';
+import { PublicPostsController } from '@gitroom/backend/public-api/routes/v1/public.posts.controller';
+import { PublicMediaController } from '@gitroom/backend/public-api/routes/v1/public.media.controller';
 import { PublicAuthMiddleware } from '@gitroom/backend/services/auth/public.auth.middleware';
 
-const authenticatedController = [PublicFlowsController,
-  PublicIntegrationsController, PublicProfilesController];
+// Alimenta `controllers` E `PublicAuthMiddleware.forRoutes`: controller fora
+// desta lista fica sem autenticacao ou responde 404.
+const authenticatedController = [
+  PublicFlowsController,
+  PublicPostsController,
+  PublicMediaController,
+  PublicIntegrationsController,
+  PublicProfilesController,
+];
 @Module({
   imports: [UploadModule],
   controllers: [...authenticatedController],

@@ -184,3 +184,110 @@ describe('PublicIntegrationsController - uploadsFromUrl', () => {
     expect(result).toEqual({ id: 'media-2', path: 'https://r2/x.jpg' });
   });
 });
+
+describe('PublicIntegrationsController - canais e escopo de perfil em posts (entrega 2)', () => {
+  const org = { id: 'org-1' } as any;
+  let controller: PublicIntegrationsController;
+  let integrationService: {
+    getIntegrationInScope: jest.Mock;
+    enableChannel: jest.Mock;
+    disableChannel: jest.Mock;
+    updateProviderSettings: jest.Mock;
+  };
+  let postsService: {
+    getPosts: jest.Mock;
+    getPostInScope: jest.Mock;
+    getGroupInScope: jest.Mock;
+    deletePost: jest.Mock;
+  };
+
+  beforeEach(() => {
+    integrationService = {
+      getIntegrationInScope: jest.fn(),
+      enableChannel: jest.fn(),
+      disableChannel: jest.fn(),
+      updateProviderSettings: jest.fn(),
+    };
+    postsService = {
+      getPosts: jest.fn(),
+      getPostInScope: jest.fn(),
+      getGroupInScope: jest.fn(),
+      deletePost: jest.fn(),
+    };
+    controller = new PublicIntegrationsController(
+      integrationService as any,
+      postsService as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+  });
+
+  it('POST /integrations/:id/enable valida o escopo e habilita com o limite do plano', async () => {
+    integrationService.getIntegrationInScope.mockResolvedValue({ id: 'int-1' });
+    integrationService.enableChannel.mockResolvedValue({ id: 'int-1', disabled: false });
+
+    await controller.enableChannel(org, 'prof-1', 'int-1', undefined);
+
+    expect(integrationService.getIntegrationInScope).toHaveBeenCalledWith('org-1', 'int-1', 'prof-1');
+    expect(integrationService.enableChannel).toHaveBeenCalledWith('org-1', expect.any(Number), 'int-1', 'prof-1');
+  });
+
+  it('POST /integrations/:id/disable valida o escopo e desabilita', async () => {
+    integrationService.getIntegrationInScope.mockResolvedValue({ id: 'int-1' });
+    integrationService.disableChannel.mockResolvedValue({ id: 'int-1', disabled: true });
+
+    await controller.disableChannel(org, undefined, 'int-1', 'prof-2');
+
+    expect(integrationService.getIntegrationInScope).toHaveBeenCalledWith('org-1', 'int-1', 'prof-2');
+    expect(integrationService.disableChannel).toHaveBeenCalledWith('org-1', 'int-1');
+  });
+
+  it('POST /integrations/:id/settings grava a string JSON e chave de perfil divergente -> 403', async () => {
+    integrationService.getIntegrationInScope.mockResolvedValue({ id: 'int-1' });
+    integrationService.updateProviderSettings.mockResolvedValue(undefined);
+
+    const r = await controller.updateProviderSettings(org, 'prof-1', 'int-1', undefined, {
+      additionalSettings: '[{"title":"Verified","value":true}]',
+    } as any);
+    expect(integrationService.updateProviderSettings).toHaveBeenCalledWith(
+      'org-1',
+      'int-1',
+      '[{"title":"Verified","value":true}]'
+    );
+    expect(r).toEqual({ ok: true });
+
+    await expect(
+      controller.updateProviderSettings(org, 'prof-1', 'int-1', 'prof-9', { additionalSettings: '[]' } as any)
+    ).rejects.toMatchObject({ status: 403 });
+    expect(integrationService.getIntegrationInScope).toHaveBeenCalledTimes(1);
+  });
+
+  it('GET /posts filtra pelo perfil da chave (ou ?profileId com chave de org)', async () => {
+    postsService.getPosts.mockResolvedValue([]);
+
+    await controller.getPosts(org, 'prof-1', { startDate: 'a', endDate: 'b' } as any);
+    expect(postsService.getPosts).toHaveBeenCalledWith('org-1', expect.objectContaining({ startDate: 'a' }), 'prof-1');
+
+    await controller.getPosts(org, undefined, { startDate: 'a', endDate: 'b', profileId: 'prof-2' } as any);
+    expect(postsService.getPosts).toHaveBeenLastCalledWith('org-1', expect.anything(), 'prof-2');
+
+    await expect(
+      controller.getPosts(org, 'prof-1', { startDate: 'a', endDate: 'b', profileId: 'prof-9' } as any)
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('DELETE /posts/:id e /posts/group/:group apagam so no perfil da chave', async () => {
+    postsService.getPostInScope.mockResolvedValue({ id: 'p1', group: 'g1' });
+    postsService.deletePost.mockResolvedValue({ id: 'p1' });
+    await controller.deletePost(org, 'prof-1', 'p1');
+    expect(postsService.getPostInScope).toHaveBeenCalledWith('org-1', 'p1', 'prof-1');
+    expect(postsService.deletePost).toHaveBeenCalledWith('org-1', 'g1', 'prof-1');
+
+    postsService.getGroupInScope.mockResolvedValue([{ id: 'p1' }]);
+    await controller.deletePostByGroup(org, 'prof-1', 'g1');
+    expect(postsService.getGroupInScope).toHaveBeenCalledWith('org-1', 'g1', 'prof-1');
+    expect(postsService.deletePost).toHaveBeenLastCalledWith('org-1', 'g1', 'prof-1');
+  });
+});
