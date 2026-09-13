@@ -179,3 +179,26 @@ describe('MediaRepository.getMedia', () => {
     );
   });
 });
+
+describe('MediaRepository.getMediaForOrg', () => {
+  it('busca por id + org, sem apagadas, e com OR perfil/null quando ha profileId', async () => {
+    const prisma = createPrismaRepositoryMock('media');
+    prisma.model.media.findFirst.mockResolvedValue(null as any);
+    const repo = new MediaRepository(prisma as any);
+
+    await repo.getMediaForOrg('org-1', 'm1');
+    expect(prisma.model.media.findFirst).toHaveBeenCalledWith({
+      where: { id: 'm1', organizationId: 'org-1', deletedAt: null },
+    });
+
+    await repo.getMediaForOrg('org-1', 'm1', 'prof-1');
+    expect(prisma.model.media.findFirst).toHaveBeenLastCalledWith({
+      where: {
+        id: 'm1',
+        organizationId: 'org-1',
+        deletedAt: null,
+        OR: [{ profileId: 'prof-1' }, { profileId: null }],
+      },
+    });
+  });
+});
