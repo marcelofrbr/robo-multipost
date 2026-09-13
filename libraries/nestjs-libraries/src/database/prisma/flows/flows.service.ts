@@ -48,8 +48,8 @@ export class FlowsService {
     private _credentialService: CredentialService
   ) {}
 
-  getFlows(orgId: string, profileId?: string) {
-    return this._flowsRepository.getFlows(orgId, profileId);
+  getFlows(orgId: string, profileId?: string, integrationId?: string) {
+    return this._flowsRepository.getFlows(orgId, profileId, integrationId);
   }
 
   getFlow(orgId: string, id: string, profileId?: string) {
@@ -64,6 +64,12 @@ export class FlowsService {
    * Guard usado pelos caminhos expostos na API publica: a integracao precisa
    * existir, estar ativa e pertencer ao perfil da chave (quando houver).
    * 412 orienta o cliente a reconectar; 403 fecha IDOR por integrationId.
+   *
+   * Integracao com `profileId` nulo (canal conectado antes dos perfis) e
+   * tratada como compartilhada entre os perfis da org — mesma regra de
+   * `IntegrationRepository.getIntegrationById`/`getIntegrationsList`
+   * (`OR: [{ profileId }, { profileId: null }]`). Restringir isso e uma
+   * decisao de produto que precisa valer para a UI e a API ao mesmo tempo.
    */
   async assertIntegrationAccess(
     orgId: string,

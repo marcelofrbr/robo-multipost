@@ -331,5 +331,20 @@ describe('DmFlowService', () => {
       );
       expect(result).toEqual({ id: 'conv-1', status: 'CLOSED' });
     });
+
+    it('deve repassar o profileId para fechar so conversas do proprio perfil', async () => {
+      dmRepository.closeConversationForOrg.mockResolvedValue({
+        id: 'conv-1',
+        status: 'CLOSED',
+      } as any);
+
+      await service.resolveConversation('org-1', 'conv-1', 'prof-1');
+
+      expect(dmRepository.closeConversationForOrg).toHaveBeenCalledWith(
+        'conv-1',
+        'org-1',
+        'prof-1'
+      );
+    });
   });
 });

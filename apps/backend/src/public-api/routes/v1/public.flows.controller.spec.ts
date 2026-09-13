@@ -122,23 +122,21 @@ describe('PublicFlowsController', () => {
         { id: 'f2', integrationId: 'int-2' },
       ]);
       const result = await controller.listFlows(org, undefined, undefined, undefined);
-      expect(flowsService.getFlows).toHaveBeenCalledWith('org-1', undefined);
+      expect(flowsService.getFlows).toHaveBeenCalledWith('org-1', undefined, undefined);
       expect(result).toHaveLength(2);
     });
 
-    it('deve filtrar por integrationId quando informado', async () => {
-      flowsService.getFlows.mockResolvedValue([
-        { id: 'f1', integrationId: 'int-1' },
-        { id: 'f2', integrationId: 'int-2' },
-      ]);
+    it('deve repassar o filtro por integrationId ao service (nao filtra em memoria)', async () => {
+      flowsService.getFlows.mockResolvedValue([{ id: 'f2', integrationId: 'int-2' }]);
       const result = await controller.listFlows(org, undefined, undefined, 'int-2');
+      expect(flowsService.getFlows).toHaveBeenCalledWith('org-1', undefined, 'int-2');
       expect(result).toEqual([{ id: 'f2', integrationId: 'int-2' }]);
     });
 
     it('chave por-perfil: forca o proprio profileId', async () => {
       flowsService.getFlows.mockResolvedValue([]);
       await controller.listFlows(org, 'perfil-A', undefined, undefined);
-      expect(flowsService.getFlows).toHaveBeenCalledWith('org-1', 'perfil-A');
+      expect(flowsService.getFlows).toHaveBeenCalledWith('org-1', 'perfil-A', undefined);
     });
 
     it('chave por-perfil: lanca 403 ao pedir outro profileId', async () => {
@@ -322,6 +320,46 @@ describe('PublicFlowsController', () => {
 
       expect(await controller.resolveDmEscalation(org, 'profile-1', 'c1')).toEqual({ id: 'c1', status: 'RESOLVED' });
       expect(dmFlowService.resolveConversation).toHaveBeenCalledWith('org-1', 'c1', 'profile-1');
+    });
+
+    it('chave de org: ?profileId mira um perfil especifico nas rotas de dm', async () => {
+      flowsService.createOrUpdateDirectMessageBotFlow.mockResolvedValue({ id: 'flow-dm' });
+      dmFlowService.listEscalations.mockResolvedValue([]);
+      dmFlowService.resolveConversation.mockResolvedValue({ id: 'c1' });
+
+      await controller.configureDmBot(
+        org,
+        undefined,
+        { integrationId: 'int-1', enabled: false } as any,
+        'profile-9'
+      );
+      expect(flowsService.createOrUpdateDirectMessageBotFlow).toHaveBeenCalledWith(
+        'org-1',
+        'int-1',
+        { enabled: false, fallbackMessage: undefined },
+        'profile-9'
+      );
+
+      await controller.listDmEscalations(org, undefined, 'profile-9');
+      expect(dmFlowService.listEscalations).toHaveBeenCalledWith('org-1', 'profile-9');
+
+      await controller.resolveDmEscalation(org, undefined, 'c1', 'profile-9');
+      expect(dmFlowService.resolveConversation).toHaveBeenCalledWith('org-1', 'c1', 'profile-9');
+    });
+
+    it('chave por-perfil: lanca 403 ao mirar outro perfil nas rotas de dm', async () => {
+      await expect(
+        controller.configureDmBot(org, 'profile-1', { integrationId: 'int-1', enabled: true } as any, 'profile-9')
+      ).rejects.toMatchObject({ status: 403 });
+      await expect(
+        controller.listDmEscalations(org, 'profile-1', 'profile-9')
+      ).rejects.toMatchObject({ status: 403 });
+      await expect(
+        controller.resolveDmEscalation(org, 'profile-1', 'c1', 'profile-9')
+      ).rejects.toMatchObject({ status: 403 });
+      expect(flowsService.createOrUpdateDirectMessageBotFlow).not.toHaveBeenCalled();
+      expect(dmFlowService.listEscalations).not.toHaveBeenCalled();
+      expect(dmFlowService.resolveConversation).not.toHaveBeenCalled();
     });
   });
 });

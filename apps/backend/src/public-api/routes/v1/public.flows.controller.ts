@@ -215,11 +215,11 @@ export class PublicFlowsController {
       publicApiProfileId,
       profileId
     );
-    const flows = await this._flowsService.getFlows(org.id, effectiveProfileId);
-    if (integrationId) {
-      return flows.filter((f: any) => f.integrationId === integrationId);
-    }
-    return flows;
+    return this._flowsService.getFlows(
+      org.id,
+      effectiveProfileId,
+      integrationId || undefined
+    );
   }
 
   @Get('/flows/:id')
@@ -478,6 +478,7 @@ export class PublicFlowsController {
   // --- Bot de DM e escalações --------------------------------------------
 
   @Post('/flows/dm/bot')
+  @ApiQuery({ name: 'profileId', required: false })
   @ApiResponse({ status: 403, description: 'Canal de outro perfil' })
   @ApiResponse({ status: 412, description: 'Canal inexistente ou desativado' })
   @Throttle({ default: { limit: 20, ttl: 3600_000 } })
@@ -489,14 +490,19 @@ export class PublicFlowsController {
   async configureDmBot(
     @GetOrgFromRequest() org: Organization,
     @GetPublicApiProfileId() publicApiProfileId: string | undefined,
-    @Body() body: DmBotConfigDto
+    @Body() body: DmBotConfigDto,
+    @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
+    const effectiveProfileId = this.resolveProfileId(
+      publicApiProfileId,
+      profileId
+    );
     return this._flowsService.createOrUpdateDirectMessageBotFlow(
       org.id,
       body.integrationId,
       { enabled: body.enabled, fallbackMessage: body.fallbackMessage },
-      publicApiProfileId
+      effectiveProfileId
     );
   }
 
@@ -504,29 +510,43 @@ export class PublicFlowsController {
   @ApiOperation({
     summary: 'Conversas de DM escaladas para atendimento humano',
   })
+  @ApiQuery({ name: 'profileId', required: false })
+  @ApiResponse({ status: 403, description: 'Perfil de outra chave' })
   async listDmEscalations(
     @GetOrgFromRequest() org: Organization,
-    @GetPublicApiProfileId() publicApiProfileId: string | undefined
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    return this._dmFlowService.listEscalations(org.id, publicApiProfileId);
+    const effectiveProfileId = this.resolveProfileId(
+      publicApiProfileId,
+      profileId
+    );
+    return this._dmFlowService.listEscalations(org.id, effectiveProfileId);
   }
 
   @Post('/flows/dm/escalations/:id/resolve')
   @ApiOperation({ summary: 'Marcar uma escalação de DM como resolvida' })
   @ApiParam({ name: 'id', description: 'ID da conversa' })
+  @ApiQuery({ name: 'profileId', required: false })
+  @ApiResponse({ status: 403, description: 'Perfil de outra chave' })
   @ApiResponse({ status: 404, description: 'Conversa fora do seu escopo' })
   @Throttle({ default: { limit: 60, ttl: 3600_000 } })
   async resolveDmEscalation(
     @GetOrgFromRequest() org: Organization,
     @GetPublicApiProfileId() publicApiProfileId: string | undefined,
-    @Param('id') id: string
+    @Param('id') id: string,
+    @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
+    const effectiveProfileId = this.resolveProfileId(
+      publicApiProfileId,
+      profileId
+    );
     return this._dmFlowService.resolveConversation(
       org.id,
       id,
-      publicApiProfileId
+      effectiveProfileId
     );
   }
 }

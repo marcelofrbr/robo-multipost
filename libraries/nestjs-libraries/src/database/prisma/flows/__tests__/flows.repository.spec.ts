@@ -91,6 +91,23 @@ describe('FlowsRepository', () => {
   });
 
   describe('getFlows', () => {
+    it('filtra por integrationId no where quando informado', async () => {
+      mockFlowModel.findMany.mockResolvedValue([]);
+
+      await repository.getFlows('org-1', 'profile-1', 'int-1');
+
+      expect(mockFlowModel.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            organizationId: 'org-1',
+            profileId: 'profile-1',
+            integrationId: 'int-1',
+            deletedAt: null,
+          },
+        })
+      );
+    });
+
     it('should list flows for organization', async () => {
       const flows = [{ id: 'flow-1', name: 'Test Flow' }];
       mockFlowModel.findMany.mockResolvedValue(flows);

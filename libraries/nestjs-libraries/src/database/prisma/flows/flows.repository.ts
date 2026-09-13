@@ -22,11 +22,12 @@ export class FlowsRepository {
     private _ignoredMedia: PrismaRepository<'ignoredMedia'>
   ) {}
 
-  getFlows(orgId: string, profileId?: string) {
+  getFlows(orgId: string, profileId?: string, integrationId?: string) {
     return this._flow.model.flow.findMany({
       where: {
         organizationId: orgId,
         ...(profileId ? { profileId } : {}),
+        ...(integrationId ? { integrationId } : {}),
         deletedAt: null,
       },
       include: {

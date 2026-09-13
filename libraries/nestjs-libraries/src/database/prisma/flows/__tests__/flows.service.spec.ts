@@ -146,7 +146,13 @@ describe('FlowsService', () => {
     it('should delegate to repository', async () => {
       mockRepository.getFlows.mockResolvedValue([]);
       await service.getFlows('org-1', 'profile-1');
-      expect(mockRepository.getFlows).toHaveBeenCalledWith('org-1', 'profile-1');
+      expect(mockRepository.getFlows).toHaveBeenCalledWith('org-1', 'profile-1', undefined);
+    });
+
+    it('repassa o filtro por integrationId ao repositorio', async () => {
+      mockRepository.getFlows.mockResolvedValue([]);
+      await service.getFlows('org-1', 'profile-1', 'int-1');
+      expect(mockRepository.getFlows).toHaveBeenCalledWith('org-1', 'profile-1', 'int-1');
     });
   });
 
@@ -1813,6 +1819,21 @@ describe('FlowsService.assertIntegrationAccess (guard de integracao)', () => {
     await expect(
       service.getInstagramPostsByIntegration('org-1', 'int-1', undefined, 25, 'profile-1')
     ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('integracao sem profileId (legado) e compartilhada: chave de perfil passa, como em getIntegrationById', async () => {
+    // Espelha o repositorio de integracoes (OR profileId / profileId null):
+    // canal sem perfil atribuido e visivel a todos os perfis da org. Mudar
+    // isso e decisao de produto, nao deste guard.
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-legado',
+      disabled: false,
+      profileId: null,
+    });
+
+    await expect(
+      service.assertIntegrationAccess('org-1', 'int-legado', 'profile-1')
+    ).resolves.toMatchObject({ id: 'int-legado' });
   });
 
   it('getExecution repassa o flowId ao repositorio', async () => {

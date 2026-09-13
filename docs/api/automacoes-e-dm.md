@@ -2,7 +2,9 @@
 
 Base: `https://<seu-dominio>/api/public/v1` · Autenticação: header `Authorization: <chave de API>`.
 
-Use a **chave do perfil** (Configurações → Desenvolvedores → chave do perfil). Ela só enxerga os canais e automações daquele perfil; pedir `?profileId` de outro perfil devolve **403**. A chave de organização opera no perfil Default (ou no `?profileId` informado).
+Use a **chave do perfil** (Configurações → Desenvolvedores → chave do perfil). Ela só enxerga os canais e automações daquele perfil; pedir `?profileId` de outro perfil devolve **403**. A chave de organização opera no perfil Default (ou no `?profileId` informado) — o parâmetro vale para todas as rotas, inclusive as de DM (`/flows/dm/*`).
+
+> Canal conectado **antes** de existirem perfis (sem perfil atribuído) é tratado como compartilhado: aparece para qualquer perfil da organização, na tela e na API. Se quiser isolá-lo, atribua-o a um perfil na tela de canais.
 
 ## Pré-requisitos
 
