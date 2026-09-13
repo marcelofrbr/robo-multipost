@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   ValidationPipe,
+  NotFoundException,
 } from '@nestjs/common';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
 import { CreatePostDto } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
@@ -543,6 +544,34 @@ export class PostsService {
         ? findAll.flatMap((p: any) => this.arrangePostsByGroup(all, p.id))
         : []),
     ];
+  }
+
+  /**
+   * Escopo da API publica: post precisa existir na org e, com chave de
+   * perfil, pertencer ao perfil. Posts sao estritos por perfil (getPosts e
+   * deletePost filtram profileId exato), entao fora do escopo e 404.
+   */
+  async getPostInScope(orgId: string, id: string, profileId?: string) {
+    const post = await this._postRepository.getPostById(id, orgId);
+    if (!post || post.deletedAt) {
+      throw new NotFoundException('Post not found');
+    }
+    if (profileId && post.profileId !== profileId) {
+      throw new NotFoundException('Post not found');
+    }
+    return post;
+  }
+
+  /** Mesma regra de getPostInScope, para um grupo (post multi-canal). */
+  async getGroupInScope(orgId: string, group: string, profileId?: string) {
+    const posts = await this._postRepository.getPostsByGroup(orgId, group);
+    if (!posts.length) {
+      throw new NotFoundException('Post group not found');
+    }
+    if (profileId && posts.some((p) => p.profileId !== profileId)) {
+      throw new NotFoundException('Post group not found');
+    }
+    return posts;
   }
 
   async getPost(orgId: string, id: string, convertToJPEG = false) {
