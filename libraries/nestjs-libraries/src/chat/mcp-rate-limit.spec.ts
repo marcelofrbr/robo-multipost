@@ -31,8 +31,16 @@ describe('mcp-rate-limit', () => {
     const fromUrl = mcpCallerKeys(req({ originalUrl: '/mcp/chave-na-url?x=1' }));
     expect(fromUrl.token).toMatch(/^tok:[a-f0-9]{32}$/);
 
-    const behindProxy = mcpCallerKeys(req({ headers: { 'x-forwarded-for': '203.0.113.7, 10.0.0.1' } }));
+    // Traefik (borda) grava o ip real; o nginx do container anexa o ip do
+    // Traefik -> com 2 hops confiaveis o cliente e o PENULTIMO. O primeiro
+    // (forjavel pelo cliente) nunca e usado.
+    const behindProxy = mcpCallerKeys(
+      req({ headers: { 'x-forwarded-for': 'forjado, 203.0.113.7, 10.0.0.1' } }),
+      2
+    );
     expect(behindProxy.ip).toBe('ip:203.0.113.7');
+    // Menos entradas que hops (ex.: dev sem borda): usa o que o proxy confiavel gravou.
+    expect(mcpCallerKeys(req({ headers: { 'x-forwarded-for': '198.51.100.4' } }), 2).ip).toBe('ip:198.51.100.4');
     expect(mcpCallerKeys(req()).token).toBeUndefined();
   });
 

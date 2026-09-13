@@ -308,7 +308,8 @@ export class UpdateAutomationTool implements AgentToolInterface {
         'Edita uma automacao REESCREVENDO a configuracao inteira a partir dos ' +
         'campos enviados (mesmo contrato de createCommentAutomation). Leia com ' +
         'getAutomation e reenvie todos os campos que devem permanecer. ' +
-        'Promove DRAFT para ACTIVE.',
+        'Promove DRAFT para ACTIVE. O canal (integrationId) de uma automacao ' +
+        'existente NAO muda no update — para trocar de canal, crie outra.',
       inputSchema: automationInputSchema.extend({ flowId: z.string() }),
       outputSchema: z.object({ flow: z.any() }),
       execute: async (input: any) => {
@@ -365,15 +366,21 @@ export class AutomationExecutionsTool implements AgentToolInterface {
         page: z.number().optional().describe('a partir de 1'),
         limit: z.number().optional().describe('ate 100 (padrao 20)'),
       }),
-      outputSchema: z.object({ items: z.array(z.any()), total: z.number() }),
+      outputSchema: z.object({
+        page: z.number(),
+        limit: z.number(),
+        hasMore: z.boolean(),
+        items: z.array(z.any()),
+      }),
       execute: async (input: any) => {
         const orgId = requireOrgId();
         await requireFlowInScope(this._flowsService, orgId, input.flowId);
         // Mesmo clamp do controller publico: o service nao limita.
         const page = Math.max(1, Number(input.page) || 1);
         const limit = Math.min(100, Math.max(1, Number(input.limit) || 20));
-        const r: any = await this._flowsService.getExecutions(orgId, input.flowId, page, limit);
-        return { items: r?.items ?? [], total: r?.total ?? 0 };
+        // O repositorio devolve a pagina como array (findMany) — sem total.
+        const items = await this._flowsService.getExecutions(orgId, input.flowId, page, limit);
+        return { page, limit, hasMore: items.length === limit, items };
       },
     });
   }

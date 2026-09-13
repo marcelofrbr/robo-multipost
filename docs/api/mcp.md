@@ -35,7 +35,7 @@ Cada tool espelha uma rota da API pública e passa pelos **mesmos guards de esco
 |---|---|---|
 | `listPosts` | `GET /posts?startDate&endDate` | Posts do calendário no período |
 | `getPost` | `GET /posts/:id` | Post completo (grupo, thread, mídias; canal sem tokens) |
-| `schedulePost` | `POST /posts` | Cria/agenda/publica (já existia) |
+| `integrationSchedulePostTool` | `POST /posts` | Cria/agenda/publica (já existia) |
 | `changePostDate` | `PUT /posts/:id/date` | Reagendar (`schedule`) ou só trocar a data (`update`) |
 | `deletePost` | `DELETE /posts/group/:group` | Apaga o post e o grupo dele |
 | `findFreeSlot` | `GET /find-slot/:integrationId` | Próximo horário livre do canal |
@@ -52,7 +52,7 @@ Cada tool espelha uma rota da API pública e passa pelos **mesmos guards de esco
 | `saveMediaInformation` | `POST /media/information` | Texto alternativo / miniatura |
 | `deleteMedia` | `DELETE /media/:id` | Remove da biblioteca |
 | `cleanupMedia` | — | Limpeza da galeria (já existia) |
-| `generateImage`, `generateVideo`, `generateVideoOptions`, `videoFunction` | `POST /generate-video`, `/video/function` | IA generativa (já existiam) |
+| `generateImageTool`, `generateVideoTool`, `generateVideoOptions`, `videoFunctionTool` | `POST /generate-video`, `/video/function` | IA generativa (já existiam) |
 
 ### Canais
 
@@ -63,7 +63,7 @@ Cada tool espelha uma rota da API pública e passa pelos **mesmos guards de esco
 | `integrationEnable` / `integrationDisable` | `POST /integrations/:id/enable` · `/disable` | Reativa / desativa |
 | `integrationSettings` | `GET /integration-settings/:id` · `POST /integrations/:id/settings` | Lê (sem `settings`) ou grava (com `settings`) as configurações do provedor |
 | `integrationAnalytics` | `GET /analytics/:integration` | Métricas do canal |
-| `integrationValidation`, `integrationTrigger` | `POST /integration-trigger/:id` | Validação / gatilhos do provedor (já existiam) |
+| `integrationSchema`, `triggerTool` | `POST /integration-trigger/:id` | Validação / gatilhos do provedor (já existiam) |
 
 ### Automações e DM
 
@@ -72,10 +72,10 @@ Cada tool espelha uma rota da API pública e passa pelos **mesmos guards de esco
 | `listAutomations` | `GET /flows` | Lista as automações (já existia) |
 | `getAutomation` | `GET /flows/:id` | Configuração completa — leia antes de editar |
 | `createCommentAutomation` | `POST /flows` | Cria (contrato completo: comentário **ou** story, follow-gate em 1 ou 2 passos, `handoffToBot`) |
-| `updateAutomation` | `PUT /flows/:id` | **Reescreve** a automação com o mesmo contrato — reenvie todos os campos que devem permanecer |
+| `updateAutomation` | `PUT /flows/:id` | **Reescreve** a automação com o mesmo contrato — reenvie todos os campos que devem permanecer. O canal (`integrationId`) não muda no update |
 | `setAutomationStatus` | `POST /flows/:id/status` | Ativar / pausar / arquivar (já existia) |
 | `deleteAutomation` | `DELETE /flows/:id` | Exclui |
-| `automationExecutions` | `GET /flows/:id/executions` | Histórico do que a automação fez |
+| `automationExecutions` | `GET /flows/:id/executions` | Histórico do que a automação fez (`{ page, limit, hasMore, items }`) |
 | `listInstagramPostsForAutomation` | `GET /flows/integrations/:id/posts` | Posts do Instagram para escolher o alvo |
 | `webhookStatus` | `GET /flows/integrations/:id/webhook-status` | Diagnóstico do webhook da Meta — rode antes de criar automações |
 | `configureDmBot` | `POST /flows/dm/bot` | Liga/desliga o bot de DM (já existia) |
@@ -87,7 +87,7 @@ Cada tool espelha uma rota da API pública e passa pelos **mesmos guards de esco
 |---|---|---|
 | `listProfiles` | `GET /profiles` | Perfis da organização (chave de perfil vê só o próprio) |
 | `listNotifications` | `GET /notifications` | Avisos e falhas de publicação |
-| `knowledgeQuery`, `webSearch`, `extractUrls` | — | Base de conhecimento e pesquisa (já existiam) |
+| `knowledgeBaseQuery`, `webSearchTool`, `extractUrlsTool` | — | Base de conhecimento e pesquisa (já existiam) |
 
 ## Exemplos de pedidos em linguagem natural
 
@@ -100,7 +100,7 @@ Cada tool espelha uma rota da API pública e passa pelos **mesmos guards de esco
 
 ## Limites
 
-Por token: 120 requisições/min; por IP: 300/min. Acima disso o servidor responde **429** (`{ "error": "rate_limited", "retryAfterSeconds": 60 }`).
+Por token: 120 requisições/min; por IP: 300/min. Acima disso o servidor responde **429** (`{ "error": "rate_limited", "retryAfterSeconds": 60 }`). O IP é lido do `X-Forwarded-For` descontando os proxies confiáveis (`MCP_TRUSTED_PROXY_HOPS`, padrão 2 = Traefik + nginx do container) — o valor enviado pelo cliente não conta.
 
 ## Erros
 

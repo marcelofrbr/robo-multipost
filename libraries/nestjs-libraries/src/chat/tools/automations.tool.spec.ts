@@ -122,14 +122,27 @@ describe('automations tools (paridade com /public/v1/flows)', () => {
     expect(flows.deleteFlow).toHaveBeenCalledWith('org-1', 'flow-1', 'prof-1');
   });
 
-  it('automationExecutions valida o escopo e limita page/limit', async () => {
+  it('automationExecutions valida o escopo, limita page/limit e devolve o array do service', async () => {
     const flows = createMock<FlowsService>();
     flows.getFlow.mockResolvedValue({ id: 'flow-1' } as any);
-    flows.getExecutions.mockResolvedValue({ items: [], total: 0 } as any);
+    // O service/repositorio devolvem um array (findMany), nao { items, total }.
+    flows.getExecutions.mockResolvedValue([
+      { id: 'exec-1', status: 'COMPLETED', createdAt: new Date('2026-09-13T10:00:00Z') },
+      { id: 'exec-2', status: 'FAILED', createdAt: new Date('2026-09-13T09:00:00Z') },
+    ] as any);
 
-    await run(new AutomationExecutionsTool(flows), { flowId: 'flow-1', page: 0, limit: 999 });
+    const r = await run(new AutomationExecutionsTool(flows), { flowId: 'flow-1', page: 0, limit: 999 });
 
     expect(flows.getExecutions).toHaveBeenCalledWith('org-1', 'flow-1', 1, 100);
+    expect(r).toEqual({
+      page: 1,
+      limit: 100,
+      hasMore: false,
+      items: [
+        expect.objectContaining({ id: 'exec-1', status: 'COMPLETED' }),
+        expect.objectContaining({ id: 'exec-2', status: 'FAILED' }),
+      ],
+    });
   });
 
   it('webhookStatus valida o escopo do canal e devolve o diagnostico', async () => {
