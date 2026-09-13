@@ -53,6 +53,13 @@ import {
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { useShallow } from 'zustand/react/shallow';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
+import { MediaDateFilter } from '@gitroom/frontend/components/media/media-date-filter.component';
+import {
+  isValidDateRange,
+  MediaDateRange,
+  toIsoRange,
+} from '@gitroom/frontend/components/media/media-date-range.helper';
+import { getTimezone } from '@gitroom/frontend/components/layout/set.timezone';
 const Polonto = dynamic(
   () => import('@gitroom/frontend/components/launches/polonto')
 );
@@ -207,13 +214,34 @@ export const MediaBox: FC<{
   closeModal: () => void;
 }> = ({ type, standalone, setMedia }) => {
   const [page, setPage] = useState(0);
+  const [dateRange, setDateRange] = useState<MediaDateRange>({});
   const fetch = useFetch();
   const modals = useModals();
   const toaster = useToaster();
+  // Trocar o filtro sempre volta para a primeira pagina.
+  const changeDateRange = useCallback((range: MediaDateRange) => {
+    setDateRange(range);
+    setPage(0);
+  }, []);
+  const rangeQuery = useMemo(() => {
+    if (!isValidDateRange(dateRange)) {
+      return '';
+    }
+    const iso = toIsoRange(dateRange, getTimezone());
+    const params = new URLSearchParams();
+    if (iso.from) params.set('from', iso.from);
+    if (iso.to) params.set('to', iso.to);
+    const query = params.toString();
+    return query ? `&${query}` : '';
+  }, [dateRange]);
+  const hasDateFilter = !!dateRange.from || !!dateRange.to;
   const loadMedia = useCallback(async () => {
-    return (await fetch(`/media?page=${page + 1}`)).json();
-  }, [page]);
-  const { data, mutate, isLoading } = useSWR(`get-media-${page}`, loadMedia);
+    return (await fetch(`/media?page=${page + 1}${rangeQuery}`)).json();
+  }, [page, rangeQuery]);
+  const { data, mutate, isLoading } = useSWR(
+    `get-media-${page}-${rangeQuery}`,
+    loadMedia
+  );
   const [selected, setSelected] = useState([]);
   const t = useT();
   const uploaderRef = useRef<any>(null);
@@ -406,36 +434,39 @@ export const MediaBox: FC<{
       <div className="flex flex-col flex-1">
         <div
           className={clsx(
-            'flex',
-            !isLoading && !data?.results?.length && 'hidden'
+            'flex flex-col gap-[10px]',
+            !isLoading && !data?.results?.length && !hasDateFilter && 'hidden'
           )}
         >
-          {!isLoading && !!data?.results?.length && (
-            <div className="flex-1 text-[14px] font-[600] whitespace-pre-line">
-              {t(
-                'select_or_upload_pictures_max_1gb',
-                'Select or upload pictures (maximum 1 GB per upload).'
-              )}
-              {'\n'}
-              {t(
-                'you_can_drag_drop_pictures',
-                'You can also drag & drop pictures.'
-              )}
-            </div>
-          )}
-          <input
-            type="file"
-            ref={uploaderRef}
-            onChange={addToUpload}
-            className="hidden"
-            multiple={true}
-          />
-          {!isLoading && !!data?.results?.length && (
-            <div className="flex gap-[8px]">
-              {btn}
-              <ThirdPartyMediaLibrary onImported={() => mutate()} />
-            </div>
-          )}
+          <div className="flex">
+            {!isLoading && !!data?.results?.length && (
+              <div className="flex-1 text-[14px] font-[600] whitespace-pre-line">
+                {t(
+                  'select_or_upload_pictures_max_1gb',
+                  'Select or upload pictures (maximum 1 GB per upload).'
+                )}
+                {'\n'}
+                {t(
+                  'you_can_drag_drop_pictures',
+                  'You can also drag & drop pictures.'
+                )}
+              </div>
+            )}
+            <input
+              type="file"
+              ref={uploaderRef}
+              onChange={addToUpload}
+              className="hidden"
+              multiple={true}
+            />
+            {!isLoading && (!!data?.results?.length || hasDateFilter) && (
+              <div className="flex gap-[8px]">
+                {btn}
+                <ThirdPartyMediaLibrary onImported={() => mutate()} />
+              </div>
+            )}
+          </div>
+          <MediaDateFilter value={dateRange} onChange={changeDateRange} />
         </div>
         <div className="w-full pointer-events-none relative mt-[5px] mb-[5px]">
           <div className="w-full h-[46px] overflow-hidden absolute left-0 bg-newBgColorInner uppyChange">
@@ -469,7 +500,22 @@ export const MediaBox: FC<{
                 'flex justify-center items-center gap-[20px] flex-col'
             )}
           >
-            {!isLoading && !data?.results?.length && (
+            {!isLoading && !data?.results?.length && hasDateFilter && (
+              <>
+                <NoMediaIcon />
+                <div className="text-[20px] font-[600]">
+                  {t('media_filter_no_results', 'No media in this period')}
+                </div>
+                <button
+                  type="button"
+                  className="text-[14px] text-textColor underline"
+                  onClick={() => changeDateRange({})}
+                >
+                  {t('media_filter_clear', 'Clear')}
+                </button>
+              </>
+            )}
+            {!isLoading && !data?.results?.length && !hasDateFilter && (
               <>
                 <NoMediaIcon />
                 <div className="text-[20px] font-[600]">
