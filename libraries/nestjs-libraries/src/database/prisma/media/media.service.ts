@@ -153,8 +153,20 @@ export class MediaService {
     return this.saveFile(org, name, file, fileName, profileId);
   }
 
-  getMedia(org: string, page: number, profileId?: string) {
-    return this._mediaRepository.getMedia(org, page, profileId);
+  async getMedia(
+    org: string,
+    page: number,
+    profileId?: string,
+    range?: { from?: string; to?: string }
+  ) {
+    if (
+      range?.from &&
+      range?.to &&
+      new Date(range.from).getTime() > new Date(range.to).getTime()
+    ) {
+      throw new HttpException('from must be before or equal to to', 400);
+    }
+    return this._mediaRepository.getMedia(org, page, profileId, range);
   }
 
   getMediaStats(org: string, profileId?: string) {
