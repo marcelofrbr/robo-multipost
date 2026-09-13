@@ -3,7 +3,13 @@
 # Usado como PreToolUse hook no settings.json do Claude Code
 
 input=$(cat)
-cmd=$(echo "$input" | jq -r '.tool_input.command // empty')
+# jq nem sempre existe no Git Bash do Windows; sem ele o hook viraria no-op
+# silencioso. Node esta sempre disponivel neste repo, entao serve de fallback.
+if command -v jq >/dev/null 2>&1; then
+  cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
+else
+  cmd=$(printf '%s' "$input" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{process.stdout.write(JSON.parse(d).tool_input?.command||"")}catch{}})')
+fi
 
 # So verificar em comandos git commit
 if echo "$cmd" | grep -qE '^git commit'; then

@@ -71,10 +71,10 @@ O Robô MultiPost precisa de **5 serviços** rodando simultaneamente:
 
 ```bash
 # 1. Baixar o arquivo de configuração
-curl -o docker-compose.yml https://raw.githubusercontent.com/maiconramos/robo-multipost/main/docker-compose.yaml
+curl -o docker-compose.yml https://raw.githubusercontent.com/marcelofrbr/robo-multipost/main/docker-compose.yaml
 
 # 2. Baixar o arquivo de variáveis de ambiente
-curl -o .env.example https://raw.githubusercontent.com/maiconramos/robo-multipost/main/.env.example
+curl -o .env.example https://raw.githubusercontent.com/marcelofrbr/robo-multipost/main/.env.example
 
 # 3. Criar seu arquivo de variáveis de ambiente
 cp .env.example .env

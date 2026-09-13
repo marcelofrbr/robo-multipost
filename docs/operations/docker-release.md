@@ -45,8 +45,8 @@ O projeto segue SemVer com uma convencao clara para tags e imagens:
 | Git tag (RC) | Com prefixo `v` + sufixo | `v0.3.0-rc.1` |
 | package.json | Sem prefixo | `0.2.0` ou `0.3.0-rc.1` |
 | version.txt | Sem prefixo | `0.2.0` ou `0.3.0-rc.1` |
-| Imagem Docker (estavel) | Sem prefixo + `:latest` | `ghcr.io/maiconramos/robo-multipost:0.2.0` |
-| Imagem Docker (RC) | Sem prefixo + `:prerelease` | `ghcr.io/maiconramos/robo-multipost:0.3.0-rc.1` |
+| Imagem Docker (estavel) | Sem prefixo + `:latest` | `ghcr.io/marcelofrbr/robo-multipost:0.2.0` |
+| Imagem Docker (RC) | Sem prefixo + `:prerelease` | `ghcr.io/marcelofrbr/robo-multipost:0.3.0-rc.1` |
 
 O workflow de CI/CD strip o `v` automaticamente: tag `v0.2.0` gera imagem `:0.2.0`.
 Pre-releases (versoes com `-` como `rc.1`, `beta.1`) **nao atualizam `:latest`**, mas sempre atualizam `:prerelease`.
@@ -62,10 +62,10 @@ Para usar sempre a versao mais recente de cada canal no Docker Compose:
 
 ```yaml
 # Canal estavel
-image: ghcr.io/maiconramos/robo-multipost:latest
+image: ghcr.io/marcelofrbr/robo-multipost:latest
 
 # Canal pre-release (RC)
-image: ghcr.io/maiconramos/robo-multipost:prerelease
+image: ghcr.io/marcelofrbr/robo-multipost:prerelease
 ```
 
 ### Regras de incremento
@@ -124,9 +124,9 @@ O skill `/new-release` guia todo o processo:
 Para testar uma versao antes de promover para `:latest`:
 
 1. `/new-release rc` — cria `vX.Y.Z-rc.1` direto em `main` (sem branch `release`)
-2. CI/CD builda imagem `ghcr.io/maiconramos/robo-multipost:X.Y.Z-rc.1`
+2. CI/CD builda imagem `ghcr.io/marcelofrbr/robo-multipost:X.Y.Z-rc.1`
 3. **`:latest` NAO e atualizado** — usuarios com `:latest` nao sao afetados
-4. Teste a RC na VPS com: `docker pull ghcr.io/maiconramos/robo-multipost:X.Y.Z-rc.1`
+4. Teste a RC na VPS com: `docker pull ghcr.io/marcelofrbr/robo-multipost:X.Y.Z-rc.1`
 5. Se precisar iterar, rode `/new-release rc` novamente (incrementa para `rc.2`, `rc.3`, etc.)
 
 ### Promover RC para estavel
@@ -143,7 +143,7 @@ Quando o RC estiver validado:
 O workflow `.github/workflows/build-containers.yml` e disparado por tags `v*`:
 
 1. Builda imagem multi-arch (amd64 + arm64) em paralelo
-2. Publica em `ghcr.io/maiconramos/robo-multipost:X.Y.Z`
+2. Publica em `ghcr.io/marcelofrbr/robo-multipost:X.Y.Z`
 3. Cria manifest multi-arch
 4. **Se release estavel:** atualiza tag `:latest`
 5. **Se pre-release (RC/beta):** NAO atualiza `:latest`
@@ -224,7 +224,7 @@ Use quando precisar publicar sem passar pelo CI/CD (ex: teste, hotfix urgente).
 ### Passo 1: Login no GHCR
 
 ```bash
-echo "SEU_TOKEN" | docker login ghcr.io -u maiconramos --password-stdin
+echo "SEU_TOKEN" | docker login ghcr.io -u marcelofrbr --password-stdin
 ```
 
 > Para criar o token: GitHub > Settings > Developer settings > Personal access tokens >
@@ -233,7 +233,7 @@ echo "SEU_TOKEN" | docker login ghcr.io -u maiconramos --password-stdin
 ### Passo 2: Build e tag
 
 ```bash
-export GHCR_IMAGE="ghcr.io/maiconramos/robo-multipost"
+export GHCR_IMAGE="ghcr.io/marcelofrbr/robo-multipost"
 export VERSION="0.2.0"
 
 docker build -f Dockerfile.dev \
@@ -256,7 +256,7 @@ docker push ${GHCR_IMAGE}:latest
 
 ### Verificar
 
-Acesse https://github.com/maiconramos?tab=packages para ver a imagem publicada.
+Acesse https://github.com/marcelofrbr?tab=packages para ver a imagem publicada.
 
 ---
 
@@ -298,7 +298,7 @@ Crie um `deploy.sh` na VPS:
 set -e
 
 VERSION=${1:-latest}
-IMAGE="ghcr.io/maiconramos/robo-multipost:${VERSION}"
+IMAGE="ghcr.io/marcelofrbr/robo-multipost:${VERSION}"
 
 echo "Atualizando para: ${IMAGE}"
 docker pull ${IMAGE}
@@ -326,7 +326,7 @@ Crie um `docker-compose.yml` na sua VPS:
 ```yaml
 services:
   postiz:
-    image: ghcr.io/maiconramos/robo-multipost:latest  # ou :0.2.0
+    image: ghcr.io/marcelofrbr/robo-multipost:latest  # ou :0.2.0
     container_name: postiz
     restart: always
     environment:

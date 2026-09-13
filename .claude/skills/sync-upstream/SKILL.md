@@ -107,7 +107,7 @@ git merge postiz
   | Traducoes | `libraries/react-shared-libraries/src/translation/` | Manter nossas traducoes pt-BR, adicionar chaves novas do upstream |
   | Backend | `apps/backend/`, `libraries/nestjs-libraries/` | Geralmente aceitar upstream, verificar se nao quebra integracao |
   | Config | `package.json`, `tsconfig*` | Aceitar deps do upstream, manter metadados do fork (nome, versao) |
-  | CI/CD | `.github/workflows/` | Manter nosso registry (maiconramos), aceitar melhorias de workflow |
+  | CI/CD | `.github/workflows/` | Manter nosso registry (marcelofrbr), aceitar melhorias de workflow |
   | Docs | `README.md`, `docs/` | Manter nosso README, aceitar docs novos |
   | Branding | Logos, imagens | Sempre manter os nossos |
 

@@ -317,7 +317,7 @@ A estratégia adotada é baseada no **GitLab Flow**, modelo recomendado para pro
 
 | Remote | URL |
 |---|---|
-| `origin` | `https://github.com/maiconramos/robo-multipost` |
+| `origin` | `https://github.com/marcelofrbr/robo-multipost` |
 | `upstream` | `https://github.com/gitroomhq/postiz-app` |
 
 ### Fluxo completo

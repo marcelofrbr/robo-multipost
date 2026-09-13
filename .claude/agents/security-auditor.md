@@ -1,7 +1,7 @@
 ---
 name: security-auditor
 description: Use PROACTIVELY when `code-reviewer` emits the `→ SECURITY-AUDITOR` marker, OR when a human directly requests a security audit. Read-only deep audit of HMAC webhook verification, OAuth flow integrity and `ClientInformation` propagation, JWT handling, secret/token leakage in logs, raw SQL via Prisma `$queryRaw`/`$executeRaw`, SSRF on user-supplied URLs, AES-256-GCM encryption-at-rest, prompt injection mitigation via `<source>` wrapping, AGPL compliance, authorization decorators (`@UseGuards`, `@GetOrgFromRequest`, `@GetProfileFromRequest`), per-profile credential routing via `FlowActivity.resolveIgRoute`, and rate limits on cost-sensitive paths. Conservative posture — when in doubt, reports rather than discards. Categorizes findings as 🚨 CRITICAL / ⚠️ HIGH / 💡 MEDIUM (no LOW). Never edits, never decides whether to merge, never drafts the fix — only points at the vulnerability and the class of mitigation.
-tools: Read, Glob, Grep, Bash(gh api repos/maiconramos/robo-multipost/dependabot/alerts:*)
+tools: Read, Glob, Grep, Bash(gh api repos/marcelofrbr/robo-multipost/dependabot/alerts:*)
 model: sonnet
 ---
 
@@ -84,7 +84,7 @@ If the diff is exclusively any of the above, return
 - **MUST NOT** run `Write`, `Edit`, MCP tools, tests, lints,
   builds, or git commands. The only allowed `Bash` invocation is the
   whitelisted read-only call to `gh api
-  repos/maiconramos/robo-multipost/dependabot/alerts` described in
+  repos/marcelofrbr/robo-multipost/dependabot/alerts` described in
   §"Pre-audit: Dependabot snapshot" — any other Bash usage is a
   protocol violation.
 - **MUST NOT** speculate without evidence in the diff or scoped
@@ -232,7 +232,7 @@ of slipping through review.
 Run once, at the very start of any audit:
 
 ```
-gh api repos/maiconramos/robo-multipost/dependabot/alerts --paginate \
+gh api repos/marcelofrbr/robo-multipost/dependabot/alerts --paginate \
   --jq '[.[] | select(.state == "open" and (.security_advisory.severity == "critical" or .security_advisory.severity == "high"))] | map({pkg: .dependency.package.name, severity: .security_advisory.severity, ghsa: .security_advisory.ghsa_id, fixed_in: (.security_advisory.vulnerabilities[0].first_patched_version.identifier // "none"), manifest: .dependency.manifest_path})'
 ```
 

@@ -37,13 +37,13 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.CR_PAT }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Re-tag RC as Stable
         env:
           RC: ${{ inputs.rc_version }}
           STABLE: ${{ inputs.stable_version }}
-          IMAGE: ghcr.io/maiconramos/robo-multipost
+          IMAGE: ghcr.io/${{ github.repository_owner }}/robo-multipost
         run: |
           echo "Promovendo ${IMAGE}:${RC} para ${IMAGE}:${STABLE} + :latest"
 
@@ -73,9 +73,9 @@ jobs:
           STABLE: ${{ inputs.stable_version }}
         run: |
           echo "Verificando manifest estavel:"
-          docker manifest inspect ghcr.io/maiconramos/robo-multipost:${STABLE}
+          docker manifest inspect ghcr.io/${{ github.repository_owner }}/robo-multipost:${STABLE}
 
           echo "Verificando manifest latest:"
-          docker manifest inspect ghcr.io/maiconramos/robo-multipost:latest
+          docker manifest inspect ghcr.io/${{ github.repository_owner }}/robo-multipost:latest
 
           echo "Promocao concluida com sucesso!"
