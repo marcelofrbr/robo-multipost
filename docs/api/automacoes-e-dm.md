@@ -84,4 +84,4 @@ A automação nasce **ativa** (`status: ACTIVE`); ao ativar, o app inscreve a co
 | 412 | Canal inexistente, desativado ou com token expirado (reconecte na tela) |
 | 429 | Limite de requisições nos `POST` de automação |
 
-Todas as rotas também aparecem na documentação interativa (Swagger) do backend, seção **Automações (Flows)**.
+Todas as rotas também aparecem na documentação interativa: `https://<seu-dominio>/api/docs` (Swagger, seção **Automações (Flows)**) — clique em **Authorize** e cole a chave de API.

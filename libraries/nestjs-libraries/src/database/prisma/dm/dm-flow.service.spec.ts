@@ -326,7 +326,8 @@ describe('DmFlowService', () => {
       // ASSERT
       expect(dmRepository.closeConversationForOrg).toHaveBeenCalledWith(
         'conv-1',
-        'org-1'
+        'org-1',
+        undefined
       );
       expect(result).toEqual({ id: 'conv-1', status: 'CLOSED' });
     });

@@ -353,6 +353,7 @@ export class SaveCanvasDto {
 
 export class DmBotConfigDto {
   @IsString()
+  @MaxLength(64)
   integrationId: string;
 
   @IsBoolean()
@@ -360,5 +361,6 @@ export class DmBotConfigDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   fallbackMessage?: string;
 }

@@ -20,6 +20,7 @@ const makeFlowsService = () => ({
   getInstagramStoriesByIntegration: jest.fn(),
   checkIntegrationWebhook: jest.fn(),
   createOrUpdateDirectMessageBotFlow: jest.fn(),
+  assertIntegrationAccess: jest.fn(),
 });
 
 const makeDmFlowService = () => ({
@@ -223,6 +224,9 @@ describe('PublicFlowsController', () => {
 
       expect(flowsService.getFlow).toHaveBeenCalledWith('org-1', 'flow-1', 'profile-1');
       expect(flowsService.getExecutions).toHaveBeenCalledWith('org-1', 'flow-1', 2, 10);
+
+      await controller.listExecutions(org, 'profile-1', 'flow-1', '-3', '9999');
+      expect(flowsService.getExecutions).toHaveBeenLastCalledWith('org-1', 'flow-1', 1, 100);
       expect(result).toEqual({ items: [], total: 0 });
     });
 
@@ -241,8 +245,17 @@ describe('PublicFlowsController', () => {
 
       const result = await controller.getExecution(org, undefined, 'flow-1', 'exec-1');
 
-      expect(flowsService.getExecution).toHaveBeenCalledWith('org-1', 'exec-1');
+      expect(flowsService.getExecution).toHaveBeenCalledWith('org-1', 'exec-1', 'flow-1');
       expect(result).toEqual({ id: 'exec-1' });
+    });
+
+    it('lanca 404 quando a execucao nao pertence ao flow', async () => {
+      flowsService.getFlow.mockResolvedValue({ id: 'flow-1' });
+      flowsService.getExecution.mockResolvedValue(null);
+
+      await expect(
+        controller.getExecution(org, undefined, 'flow-1', 'exec-de-outro-flow')
+      ).rejects.toMatchObject({ status: 404 });
     });
   });
 
@@ -250,9 +263,9 @@ describe('PublicFlowsController', () => {
     it('lista posts do instagram da integracao com escopo de perfil', async () => {
       flowsService.getInstagramPostsByIntegration.mockResolvedValue([{ id: 'm1' }]);
 
-      const result = await controller.listIntegrationPosts(org, 'profile-1', 'int-1');
+      const result = await controller.listIntegrationPosts(org, 'profile-1', 'int-1', undefined, 'abc', '500');
 
-      expect(flowsService.getInstagramPostsByIntegration).toHaveBeenCalledWith('org-1', 'int-1', 'profile-1');
+      expect(flowsService.getInstagramPostsByIntegration).toHaveBeenCalledWith('org-1', 'int-1', 'abc', 50, 'profile-1');
       expect(result).toEqual([{ id: 'm1' }]);
     });
 
@@ -261,7 +274,7 @@ describe('PublicFlowsController', () => {
 
       await controller.listIntegrationStories(org, undefined, 'int-1', 'profile-9');
 
-      expect(flowsService.getInstagramStoriesByIntegration).toHaveBeenCalledWith('org-1', 'int-1');
+      expect(flowsService.getInstagramStoriesByIntegration).toHaveBeenCalledWith('org-1', 'int-1', 'profile-9');
     });
 
     it('chave por-perfil: lanca 403 ao pedir posts de outro perfil', async () => {
@@ -273,8 +286,9 @@ describe('PublicFlowsController', () => {
     it('retorna o status do webhook da integracao', async () => {
       flowsService.checkIntegrationWebhook.mockResolvedValue({ ok: true });
 
-      const result = await controller.webhookStatus(org, 'int-1');
+      const result = await controller.webhookStatus(org, 'profile-1', 'int-1');
 
+      expect(flowsService.assertIntegrationAccess).toHaveBeenCalledWith('org-1', 'int-1', 'profile-1');
       expect(flowsService.checkIntegrationWebhook).toHaveBeenCalledWith('org-1', 'int-1');
       expect(result).toEqual({ ok: true });
     });
@@ -306,8 +320,8 @@ describe('PublicFlowsController', () => {
       expect(await controller.listDmEscalations(org, 'profile-1')).toEqual([{ id: 'c1' }]);
       expect(dmFlowService.listEscalations).toHaveBeenCalledWith('org-1', 'profile-1');
 
-      expect(await controller.resolveDmEscalation(org, 'c1')).toEqual({ id: 'c1', status: 'RESOLVED' });
-      expect(dmFlowService.resolveConversation).toHaveBeenCalledWith('org-1', 'c1');
+      expect(await controller.resolveDmEscalation(org, 'profile-1', 'c1')).toEqual({ id: 'c1', status: 'RESOLVED' });
+      expect(dmFlowService.resolveConversation).toHaveBeenCalledWith('org-1', 'c1', 'profile-1');
     });
   });
 });

@@ -164,8 +164,16 @@ export class DmFlowService {
     return this._dmRepository.listEscalations(orgId, profileId);
   }
 
-  async resolveConversation(orgId: string, conversationId: string) {
-    return this._dmRepository.closeConversationForOrg(conversationId, orgId);
+  async resolveConversation(
+    orgId: string,
+    conversationId: string,
+    profileId?: string
+  ) {
+    return this._dmRepository.closeConversationForOrg(
+      conversationId,
+      orgId,
+      profileId
+    );
   }
 
   private getTriggerType(flow: {

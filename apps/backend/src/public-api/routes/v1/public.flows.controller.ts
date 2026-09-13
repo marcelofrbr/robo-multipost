@@ -342,6 +342,7 @@ export class PublicFlowsController {
   @ApiParam({ name: 'id', description: 'ID do flow' })
   @ApiQuery({ name: 'page', required: false, example: 1 })
   @ApiQuery({ name: 'limit', required: false, example: 20 })
+  @ApiResponse({ status: 404, description: 'Automação fora do seu escopo' })
   async listExecutions(
     @GetOrgFromRequest() org: Organization,
     @GetPublicApiProfileId() publicApiProfileId: string | undefined,
@@ -351,18 +352,16 @@ export class PublicFlowsController {
   ) {
     Sentry.metrics.count('public_api-request', 1);
     await this.assertFlowInScope(org.id, id, publicApiProfileId);
-    return this._flowsService.getExecutions(
-      org.id,
-      id,
-      page ? Number(page) : undefined,
-      limit ? Number(limit) : undefined
-    );
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+    return this._flowsService.getExecutions(org.id, id, safePage, safeLimit);
   }
 
   @Get('/flows/:id/executions/:executionId')
   @ApiOperation({ summary: 'Detalhar uma execução (com log)' })
   @ApiParam({ name: 'id', description: 'ID do flow' })
   @ApiParam({ name: 'executionId', description: 'ID da execução' })
+  @ApiResponse({ status: 404, description: 'Automação ou execução fora do seu escopo' })
   async getExecution(
     @GetOrgFromRequest() org: Organization,
     @GetPublicApiProfileId() publicApiProfileId: string | undefined,
@@ -371,7 +370,16 @@ export class PublicFlowsController {
   ) {
     Sentry.metrics.count('public_api-request', 1);
     await this.assertFlowInScope(org.id, id, publicApiProfileId);
-    return this._flowsService.getExecution(org.id, executionId);
+    // executionId amarrado ao flow da rota (evita ler execucoes de outro flow).
+    const execution = await this._flowsService.getExecution(
+      org.id,
+      executionId,
+      id
+    );
+    if (!execution) {
+      throw new NotFoundException('Execution not found');
+    }
+    return execution;
   }
 
   // --- Alvos (posts/stories) e webhook ------------------------------------
@@ -382,7 +390,44 @@ export class PublicFlowsController {
   })
   @ApiParam({ name: 'integrationId', description: 'ID do canal Instagram' })
   @ApiQuery({ name: 'profileId', required: false })
+  @ApiQuery({ name: 'cursor', required: false, description: 'Cursor de paginação do Instagram' })
+  @ApiQuery({ name: 'limit', required: false, example: 25 })
+  @ApiResponse({ status: 403, description: 'Canal de outro perfil' })
+  @ApiResponse({ status: 412, description: 'Canal inexistente ou desativado' })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async listIntegrationPosts(
+    @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Param('integrationId') integrationId: string,
+    @Query('profileId') profileId?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    const effectiveProfileId = this.resolveProfileId(
+      publicApiProfileId,
+      profileId
+    );
+    const safeLimit = limit
+      ? Math.min(50, Math.max(1, Number(limit) || 25))
+      : undefined;
+    return this._flowsService.getInstagramPostsByIntegration(
+      org.id,
+      integrationId,
+      cursor || undefined,
+      safeLimit,
+      effectiveProfileId
+    );
+  }
+
+  @Get('/flows/integrations/:integrationId/stories')
+  @ApiOperation({ summary: 'Stories ativos do Instagram de um canal' })
+  @ApiParam({ name: 'integrationId', description: 'ID do canal Instagram' })
+  @ApiQuery({ name: 'profileId', required: false })
+  @ApiResponse({ status: 403, description: 'Canal de outro perfil' })
+  @ApiResponse({ status: 412, description: 'Canal inexistente ou desativado' })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  async listIntegrationStories(
     @GetOrgFromRequest() org: Organization,
     @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('integrationId') integrationId: string,
@@ -393,30 +438,10 @@ export class PublicFlowsController {
       publicApiProfileId,
       profileId
     );
-    return this._flowsService.getInstagramPostsByIntegration(
+    return this._flowsService.getInstagramStoriesByIntegration(
       org.id,
       integrationId,
       effectiveProfileId
-    );
-  }
-
-  @Get('/flows/integrations/:integrationId/stories')
-  @ApiOperation({ summary: 'Stories ativos do Instagram de um canal' })
-  @ApiParam({ name: 'integrationId', description: 'ID do canal Instagram' })
-  @ApiQuery({ name: 'profileId', required: false })
-  async listIntegrationStories(
-    @GetOrgFromRequest() org: Organization,
-    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
-    @Param('integrationId') integrationId: string,
-    @Query('profileId') profileId?: string
-  ) {
-    Sentry.metrics.count('public_api-request', 1);
-    // Stories nao sao filtrados por perfil no service; a chamada abaixo so
-    // aplica a regra de escopo da chave (403 se pedir outro perfil).
-    this.resolveProfileId(publicApiProfileId, profileId);
-    return this._flowsService.getInstagramStoriesByIntegration(
-      org.id,
-      integrationId
     );
   }
 
@@ -427,17 +452,35 @@ export class PublicFlowsController {
       'Verifica se o app da Meta está assinado para comments/messages. `ok=false` explica o que falta.',
   })
   @ApiParam({ name: 'integrationId', description: 'ID do canal Instagram' })
+  @ApiQuery({ name: 'profileId', required: false })
+  @ApiResponse({ status: 403, description: 'Canal de outro perfil' })
+  @ApiResponse({ status: 412, description: 'Canal inexistente ou desativado' })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async webhookStatus(
     @GetOrgFromRequest() org: Organization,
-    @Param('integrationId') integrationId: string
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
+    @Param('integrationId') integrationId: string,
+    @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
+    const effectiveProfileId = this.resolveProfileId(
+      publicApiProfileId,
+      profileId
+    );
+    await this._flowsService.assertIntegrationAccess(
+      org.id,
+      integrationId,
+      effectiveProfileId
+    );
     return this._flowsService.checkIntegrationWebhook(org.id, integrationId);
   }
 
   // --- Bot de DM e escalações --------------------------------------------
 
   @Post('/flows/dm/bot')
+  @ApiResponse({ status: 403, description: 'Canal de outro perfil' })
+  @ApiResponse({ status: 412, description: 'Canal inexistente ou desativado' })
+  @Throttle({ default: { limit: 20, ttl: 3600_000 } })
   @ApiOperation({
     summary: 'Ligar/desligar o bot de DM de um canal',
     description:
@@ -472,11 +515,18 @@ export class PublicFlowsController {
   @Post('/flows/dm/escalations/:id/resolve')
   @ApiOperation({ summary: 'Marcar uma escalação de DM como resolvida' })
   @ApiParam({ name: 'id', description: 'ID da conversa' })
+  @ApiResponse({ status: 404, description: 'Conversa fora do seu escopo' })
+  @Throttle({ default: { limit: 60, ttl: 3600_000 } })
   async resolveDmEscalation(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('id') id: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    return this._dmFlowService.resolveConversation(org.id, id);
+    return this._dmFlowService.resolveConversation(
+      org.id,
+      id,
+      publicApiProfileId
+    );
   }
 }

@@ -31,19 +31,19 @@ Comandos deste worktree: `node node_modules/jest/bin/jest.js --selectProjects <b
 - [x] RED: 9 casos novos no spec do controller (execuções, alvos, webhook, DM)
 - [x] GREEN: `listExecutions`, `getExecution` (404 fora do escopo), `listIntegrationPosts`, `listIntegrationStories`, `webhookStatus`, `configureDmBot`, `listDmEscalations`, `resolveDmEscalation` (24/24; `tsc` 0)
 
-### Task 4: Documentação e CHANGELOG
+### Task 4: Documentação e CHANGELOG — ✅ feito (commit 3d8e9ce9)
 
 **Files:**
 - Create: `docs/api/automacoes-e-dm.md` — guia em pt-BR: autenticação (chave de perfil), fluxo "criar automação para o próximo post", exemplos `curl` de cada rota, códigos de erro (401/403/404/412).
 - Modify: `CHANGELOG.md` — `[Unreleased] / ### Adicionado`.
 
-- [ ] **Step 1:** escrever `docs/api/automacoes-e-dm.md`
-- [ ] **Step 2:** entrada no CHANGELOG
-- [ ] **Step 3:** `git add docs/api CHANGELOG.md && git commit -m "docs(api): guia da API publica de automacoes e DM"`
+- [x] **Step 1:** escrever `docs/api/automacoes-e-dm.md`
+- [x] **Step 2:** entrada no CHANGELOG
+- [x] **Step 3:** `git add docs/api CHANGELOG.md && git commit -m "docs(api): guia da API publica de automacoes e DM"`
 
 ### Task 5: Verificação final e entrega
 
-- [ ] **Step 1:** `jest` backend (`public.flows|public.integrations|public.profiles`) e libs (`flows/__tests__`) verdes; `tsc` backend 0
+- [x] **Step 1:** `jest` backend (`public.flows|public.integrations|public.profiles`) e libs (`flows/__tests__`) verdes; `tsc` backend 0 — inclui o lote de correções da revisão (controller registrado no módulo, escopo de perfil em `webhook-status`/`stories`/`posts`/`resolve`, execução amarrada ao `flowId`, `page`/`limit` saneados, `@Throttle` nas leituras do Instagram, `MaxLength` no `DmBotConfigDto`, Swagger com Authorize)
 - [ ] **Step 2:** pipeline: `code-reviewer` + `security-auditor` (superfície: API pública autenticada por chave, escopo de perfil, IDOR) em paralelo; `doc-maintainer`; `feature-acceptance-reviewer`
 - [ ] **Step 3:** PR em `marcelofrbr/robo-multipost` com `--base feat/atendimento-dm-ia`; merge; build `:all`; `docker pull` + `docker service update` no VPS
 - [ ] **Step 4:** validação em produção com a chave do perfil MFPRO: `GET /flows` (200), `GET /flows/integrations/<ig>/webhook-status` (`ok: true`), `GET /flows/integrations/<ig>/posts` (lista), `GET /flows/dm/escalations` (200), e um `POST /flows` com `postMode=next_publication` pausado (`status: PAUSED`) seguido de `DELETE`

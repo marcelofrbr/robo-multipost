@@ -1730,7 +1730,8 @@ describe('FlowsService', () => {
 
       expect(mockRepository.getExecution).toHaveBeenCalledWith(
         'org-1',
-        'exec-1'
+        'exec-1',
+        undefined
       );
       expect(result).toEqual({ id: 'exec-1' });
     });
@@ -1786,6 +1787,40 @@ describe('FlowsService.assertIntegrationAccess (guard de integracao)', () => {
     await expect(
       service.quickCreateFlow('org-1', { name: 'x', integrationId: 'int-1' } as any, 'profile-1')
     ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('createOrUpdateDirectMessageBotFlow responde 403 para integracao de outro perfil', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: 'profile-outro',
+      providerIdentifier: 'instagram',
+    });
+
+    await expect(
+      service.createOrUpdateDirectMessageBotFlow('org-1', 'int-1', { enabled: true }, 'profile-1')
+    ).rejects.toMatchObject({ status: 403 });
+    expect(mockRepository.createFlow).not.toHaveBeenCalled();
+  });
+
+  it('getInstagramPostsByIntegration responde 403 para integracao de outro perfil', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: 'profile-outro',
+    });
+
+    await expect(
+      service.getInstagramPostsByIntegration('org-1', 'int-1', undefined, 25, 'profile-1')
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('getExecution repassa o flowId ao repositorio', async () => {
+    mockRepository.getExecution.mockResolvedValue({ id: 'exec-1' });
+
+    await service.getExecution('org-1', 'exec-1', 'flow-1');
+
+    expect(mockRepository.getExecution).toHaveBeenCalledWith('org-1', 'exec-1', 'flow-1');
   });
 
   it('quickUpdateFlow responde 403 quando o flow aponta para integracao de outro perfil', async () => {

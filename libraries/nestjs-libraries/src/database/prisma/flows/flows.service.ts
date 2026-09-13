@@ -65,7 +65,7 @@ export class FlowsService {
    * existir, estar ativa e pertencer ao perfil da chave (quando houver).
    * 412 orienta o cliente a reconectar; 403 fecha IDOR por integrationId.
    */
-  private async assertIntegrationAccess(
+  async assertIntegrationAccess(
     orgId: string,
     integrationId: string,
     callerProfileId?: string
@@ -714,6 +714,9 @@ export class FlowsService {
     opts: { enabled: boolean; fallbackMessage?: string },
     profileId?: string
   ): Promise<{ flowId: string; status: FlowStatus }> {
+    // Mesmo guard dos outros caminhos de escrita: fecha IDOR por integrationId
+    // (chave de perfil ligando o bot de DM de um canal de outro perfil).
+    await this.assertIntegrationAccess(orgId, integrationId, profileId);
     const integration = await this._integrationService.getIntegrationById(
       orgId,
       integrationId
@@ -941,8 +944,10 @@ export class FlowsService {
     orgId: string,
     integrationId: string,
     cursor?: string,
-    limit = 25
+    limit = 25,
+    profileId?: string
   ) {
+    await this.assertIntegrationAccess(orgId, integrationId, profileId);
     const integration = await this._integrationService.getIntegrationById(
       orgId,
       integrationId
@@ -978,8 +983,10 @@ export class FlowsService {
 
   async getInstagramStoriesByIntegration(
     orgId: string,
-    integrationId: string
+    integrationId: string,
+    profileId?: string
   ) {
+    await this.assertIntegrationAccess(orgId, integrationId, profileId);
     const integration = await this._integrationService.getIntegrationById(
       orgId,
       integrationId
@@ -1011,8 +1018,8 @@ export class FlowsService {
     }
   }
 
-  getExecution(orgId: string, id: string) {
-    return this._flowsRepository.getExecution(orgId, id);
+  getExecution(orgId: string, id: string, flowId?: string) {
+    return this._flowsRepository.getExecution(orgId, id, flowId);
   }
 
   appendExecutionLog(

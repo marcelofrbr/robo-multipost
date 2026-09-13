@@ -285,13 +285,18 @@ export class FlowsRepository {
     });
   }
 
-  getExecution(orgId: string, id: string) {
+  getExecution(orgId: string, id: string, flowId?: string) {
     // Org guard: so retorna a execucao se o flow dono pertence a org do
     // requisitante. Sem o filtro pela relacao `flow`, qualquer usuario
     // autenticado poderia ler logs de execucoes de outra org adivinhando ids
-    // (IDOR cross-tenant).
+    // (IDOR cross-tenant). Com `flowId`, amarra tambem ao flow da rota — sem
+    // isso, quem tem acesso a UM flow leria execucoes de qualquer flow da org.
     return this._flowExecution.model.flowExecution.findFirst({
-      where: { id, flow: { organizationId: orgId } },
+      where: {
+        id,
+        flow: { organizationId: orgId },
+        ...(flowId ? { flowId } : {}),
+      },
     });
   }
 

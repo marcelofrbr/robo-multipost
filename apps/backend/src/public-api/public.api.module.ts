@@ -13,7 +13,8 @@ import { PublicProfilesController } from '@gitroom/backend/public-api/routes/v1/
 import { PublicFlowsController } from '@gitroom/backend/public-api/routes/v1/public.flows.controller';
 import { PublicAuthMiddleware } from '@gitroom/backend/services/auth/public.auth.middleware';
 
-const authenticatedController = [PublicIntegrationsController, PublicProfilesController];
+const authenticatedController = [PublicFlowsController,
+  PublicIntegrationsController, PublicProfilesController];
 @Module({
   imports: [UploadModule],
   controllers: [...authenticatedController],

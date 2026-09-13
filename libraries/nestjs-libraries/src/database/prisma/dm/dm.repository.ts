@@ -124,9 +124,15 @@ export class DmRepository {
     });
   }
 
-  closeConversationForOrg(id: string, orgId: string) {
+  closeConversationForOrg(id: string, orgId: string, profileId?: string) {
+    // Com profileId (chave/sessao de perfil), so fecha conversas do proprio
+    // perfil — espelha o filtro de listEscalations.
     return this._dmConversation.model.dmConversation.update({
-      where: { id, organizationId: orgId },
+      where: {
+        id,
+        organizationId: orgId,
+        ...(profileId ? { profileId } : {}),
+      },
       data: { status: DmConversationStatus.CLOSED },
     });
   }
