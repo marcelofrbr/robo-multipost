@@ -1,4 +1,11 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 import { FlowsRepository } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.repository';
 import {
   FlowStatus,
@@ -53,7 +60,44 @@ export class FlowsService {
     return this._flowsRepository.getFlowById(id);
   }
 
+  /**
+   * Guard usado pelos caminhos expostos na API publica: a integracao precisa
+   * existir, estar ativa e pertencer ao perfil da chave (quando houver).
+   * 412 orienta o cliente a reconectar; 403 fecha IDOR por integrationId.
+   */
+  private async assertIntegrationAccess(
+    orgId: string,
+    integrationId: string,
+    callerProfileId?: string
+  ) {
+    const integration = await this._integrationService.getIntegrationById(
+      orgId,
+      integrationId
+    );
+    if (!integration || (integration as any).deletedAt) {
+      throw new HttpException(
+        'Integracao nao encontrada',
+        HttpStatus.PRECONDITION_FAILED
+      );
+    }
+    if ((integration as any).disabled) {
+      throw new HttpException(
+        'Integracao desativada ou com token expirado. Reconecte a conta antes de criar automacoes.',
+        HttpStatus.PRECONDITION_FAILED
+      );
+    }
+    if (
+      callerProfileId &&
+      integration.profileId &&
+      integration.profileId !== callerProfileId
+    ) {
+      throw new ForbiddenException('Integracao pertence a outro perfil');
+    }
+    return integration;
+  }
+
   async createFlow(orgId: string, body: CreateFlowDto, profileId?: string) {
+    await this.assertIntegrationAccess(orgId, body.integrationId, profileId);
     const check = await this.checkIntegrationWebhook(orgId, body.integrationId);
     if (!check.ok) {
       throw new BadRequestException(check.error);
@@ -492,6 +536,7 @@ export class FlowsService {
     if (!current) {
       throw new BadRequestException('Flow not found');
     }
+    await this.assertIntegrationAccess(orgId, current.integrationId, profileId);
     await this._flowsRepository.updateFlow(orgId, id, { name: body.name }, profileId);
 
     const triggerType = body.triggerType ?? 'comment_on_post';
@@ -549,6 +594,7 @@ export class FlowsService {
   }
 
   async quickCreateFlow(orgId: string, body: QuickCreateFlowDto, profileId?: string) {
+    await this.assertIntegrationAccess(orgId, body.integrationId, profileId);
     const check = await this.checkIntegrationWebhook(orgId, body.integrationId);
     if (!check.ok) {
       throw new BadRequestException(check.error);

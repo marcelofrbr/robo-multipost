@@ -1736,3 +1736,69 @@ describe('FlowsService', () => {
     });
   });
 });
+
+describe('FlowsService.assertIntegrationAccess (guard de integracao)', () => {
+  let service: FlowsService;
+
+  beforeEach(() => {
+    jest.resetAllMocks();
+    mockCredentialService.getRaw.mockResolvedValue({
+      clientId: 'fb-app',
+      clientSecret: 'fb-secret',
+    });
+    service = new FlowsService(
+      mockRepository,
+      mockTemporalService,
+      mockIntegrationService,
+      mockIntegrationManager,
+      mockCredentialService
+    );
+  });
+
+  it('quickCreateFlow responde 412 quando a integracao nao existe', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue(null);
+
+    await expect(
+      service.quickCreateFlow('org-1', { name: 'x', integrationId: 'int-404' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 412 });
+    expect(mockRepository.createFlow).not.toHaveBeenCalled();
+  });
+
+  it('quickCreateFlow responde 412 quando a integracao esta desativada', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: true,
+      profileId: null,
+    });
+
+    await expect(
+      service.quickCreateFlow('org-1', { name: 'x', integrationId: 'int-1' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 412 });
+  });
+
+  it('quickCreateFlow responde 403 quando a integracao pertence a outro perfil', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: 'profile-outro',
+    });
+
+    await expect(
+      service.quickCreateFlow('org-1', { name: 'x', integrationId: 'int-1' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('quickUpdateFlow responde 403 quando o flow aponta para integracao de outro perfil', async () => {
+    mockRepository.getFlow.mockResolvedValue({ id: 'flow-1', integrationId: 'int-1' });
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: 'profile-outro',
+    });
+
+    await expect(
+      service.quickUpdateFlow('org-1', 'flow-1', { name: 'x', integrationId: 'int-1' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 403 });
+    expect(mockRepository.updateFlow).not.toHaveBeenCalled();
+  });
+});
