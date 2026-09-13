@@ -253,6 +253,22 @@ describe('DmRepository', () => {
     });
   });
 
+  describe('getConversationForOrg', () => {
+    it('busca a conversa com escopo por org e, se informado, por perfil', async () => {
+      prisma.model.dmConversation.findFirst.mockResolvedValue(null);
+
+      await repo.getConversationForOrg('c1', 'org-1');
+      expect(prisma.model.dmConversation.findFirst).toHaveBeenCalledWith({
+        where: { id: 'c1', organizationId: 'org-1' },
+      });
+
+      await repo.getConversationForOrg('c1', 'org-1', 'prof-1');
+      expect(prisma.model.dmConversation.findFirst).toHaveBeenLastCalledWith({
+        where: { id: 'c1', organizationId: 'org-1', profileId: 'prof-1' },
+      });
+    });
+  });
+
   describe('closeConversationForOrg', () => {
     it('deve atualizar status para CLOSED com escopo por org', async () => {
       prisma.model.dmConversation.update.mockResolvedValue({} as any);
@@ -261,6 +277,17 @@ describe('DmRepository', () => {
 
       expect(prisma.model.dmConversation.update).toHaveBeenCalledWith({
         where: { id: 'c1', organizationId: 'org-1' },
+        data: { status: 'CLOSED' },
+      });
+    });
+
+    it('deve restringir ao profileId quando fornecido (espelha listEscalations)', async () => {
+      prisma.model.dmConversation.update.mockResolvedValue({} as any);
+
+      await repo.closeConversationForOrg('c1', 'org-1', 'prof-1');
+
+      expect(prisma.model.dmConversation.update).toHaveBeenCalledWith({
+        where: { id: 'c1', organizationId: 'org-1', profileId: 'prof-1' },
         data: { status: 'CLOSED' },
       });
     });

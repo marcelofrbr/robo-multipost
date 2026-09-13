@@ -40,7 +40,7 @@ Controller >> Manager >> Service >> Repository
 | `src/app.module.ts` | Root module — registers `SentryModule`, global `FILTER`, api/public-api modules |
 | `src/api/api.module.ts` | HTTP module for the private API (controllers requiring auth) |
 | `src/api/routes/` | 30+ REST controllers (auth, posts, integrations, ai-*, copilot, flows, ig-webhook, automations-inbox, etc.). Rotas DM em `flows.controller.ts`: `GET /flows/dm/escalations`, `POST /flows/dm/escalations/:id/resolve`, `POST /flows/dm/bot` |
-| `src/public-api/` | Versioned public API (`/v1/`), authenticated by API key. `POST /upload` and `POST /upload-from-url` link the created media to `publicApiProfileId` (profile-scoped API key) and return `{ id, path }` (not the full Media object). `upload-from-url` delegates to `MediaService.uploadFromUrl`. |
+| `src/public-api/` | Versioned public API (`/v1/`), authenticated by API key. `POST /upload` and `POST /upload-from-url` link the created media to `publicApiProfileId` (profile-scoped API key) and return `{ id, path }` (not the full Media object). `upload-from-url` delegates to `MediaService.uploadFromUrl`. `routes/v1/public.flows.controller.ts` covers automations + DM bot/escalations under `/public/v1/flows`, with its own strict `ValidationPipe({ whitelist, forbidNonWhitelisted, transform })` and a `resolveProfileId` helper (403 when a profile-scoped key's `?profileId`/body diverges); write paths are `@Throttle`d and call `FlowsService.assertIntegrationAccess` (412 missing/disabled, 403 other profile). |
 | `src/services/` | Small utility layer for the HTTP app (do not confuse with domain services in libraries) |
 
 ## Common Workflows
@@ -88,6 +88,7 @@ import { FILTER } from '@gitroom/nestjs-libraries/sentry/sentry.exception';
 5. **Symptom:** new endpoint does not appear in Swagger → **Cause:** controller not registered in `api.module.ts`. **Fix:** add it to the `controllers:` array.
 6. **Symptom:** TS error `'createTestModule' does not exist` in a new spec → **Cause:** wrong import path. **Fix:** `import { createTestModule } from '@gitroom/nestjs-libraries/test'`.
 7. **Symptom:** `GET /automations/aliases/lookup` returns flows from other orgs → **Cause:** `lookupAliasFlows` (and any new service method that searches by external ID like `aliasMediaId`) was called without passing `orgId`. **Fix:** all service methods that accept an externally-supplied identifier (media ID, comment ID, etc.) MUST also accept and enforce `orgId` — closes cross-tenant info leak. See `FlowsService.lookupAliasFlows`.
+8. **Symptom:** a `/public/v1` route accepting `profileId` (query or body) returns/mutates data belonging to a different profile than the one the API key is scoped to → **Cause:** a profile-scoped key's `publicApiProfileId` was not reconciled against the caller-supplied `profileId` before delegating to the service. **Fix:** every new `/public/v1` route that accepts `profileId` MUST resolve it the way `PublicFlowsController.resolveProfileId` does (throw 403 on mismatch, `publicApiProfileId ?? requestedProfileId` otherwise) before calling the service — same IDOR-closing spirit as pitfall #7, but for profile scope instead of org scope.
 
 ## Commands
 

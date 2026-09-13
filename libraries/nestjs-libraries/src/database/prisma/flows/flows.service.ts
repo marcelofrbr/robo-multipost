@@ -1,4 +1,11 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 import { FlowsRepository } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.repository';
 import {
   FlowStatus,
@@ -14,6 +21,7 @@ import {
   SaveCanvasDto,
   QuickCreateFlowDto,
 } from '@gitroom/nestjs-libraries/dtos/flows/flow.dto';
+import { checkPublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/validators/is-public-https-url.validator';
 import { TemporalService } from 'nestjs-temporal-core';
 import {
   organizationId as orgSearchAttr,
@@ -41,8 +49,8 @@ export class FlowsService {
     private _credentialService: CredentialService
   ) {}
 
-  getFlows(orgId: string, profileId?: string) {
-    return this._flowsRepository.getFlows(orgId, profileId);
+  getFlows(orgId: string, profileId?: string, integrationId?: string) {
+    return this._flowsRepository.getFlows(orgId, profileId, integrationId);
   }
 
   getFlow(orgId: string, id: string, profileId?: string) {
@@ -53,7 +61,52 @@ export class FlowsService {
     return this._flowsRepository.getFlowById(id);
   }
 
+  /**
+   * Guard usado pelos caminhos expostos na API publica: a integracao precisa
+   * existir, estar ativa e pertencer ao perfil da chave (quando houver).
+   * 412 orienta o cliente a reconectar; 403 fecha IDOR por integrationId.
+   *
+   * Integracao com `profileId` nulo (canal conectado antes dos perfis) e
+   * tratada como compartilhada entre os perfis da org — mesma regra de
+   * `IntegrationRepository.getIntegrationById`/`getIntegrationsList`
+   * (`OR: [{ profileId }, { profileId: null }]`). Restringir isso e uma
+   * decisao de produto que precisa valer para a UI e a API ao mesmo tempo.
+   */
+  async assertIntegrationAccess(
+    orgId: string,
+    integrationId: string,
+    callerProfileId?: string
+  ) {
+    const integration = await this._integrationService.getIntegrationById(
+      orgId,
+      integrationId
+    );
+    if (!integration || (integration as any).deletedAt) {
+      throw new HttpException(
+        'Integracao nao encontrada',
+        HttpStatus.PRECONDITION_FAILED
+      );
+    }
+    // refreshNeeded e gravado quando o refresh do token falha (a Graph API
+    // vai recusar a assinatura do webhook) — mesmo 412 da integracao desativada.
+    if ((integration as any).disabled || (integration as any).refreshNeeded) {
+      throw new HttpException(
+        'Integracao desativada ou com token expirado. Reconecte a conta antes de criar automacoes.',
+        HttpStatus.PRECONDITION_FAILED
+      );
+    }
+    if (
+      callerProfileId &&
+      integration.profileId &&
+      integration.profileId !== callerProfileId
+    ) {
+      throw new ForbiddenException('Integracao pertence a outro perfil');
+    }
+    return integration;
+  }
+
   async createFlow(orgId: string, body: CreateFlowDto, profileId?: string) {
+    await this.assertIntegrationAccess(orgId, body.integrationId, profileId);
     const check = await this.checkIntegrationWebhook(orgId, body.integrationId);
     if (!check.ok) {
       throw new BadRequestException(check.error);
@@ -492,6 +545,8 @@ export class FlowsService {
     if (!current) {
       throw new BadRequestException('Flow not found');
     }
+    await this.assertIntegrationAccess(orgId, current.integrationId, profileId);
+    this.assertDmButtonUrl(body.dmButtonUrl);
     await this._flowsRepository.updateFlow(orgId, id, { name: body.name }, profileId);
 
     const triggerType = body.triggerType ?? 'comment_on_post';
@@ -548,7 +603,24 @@ export class FlowsService {
     return this._flowsRepository.getFlow(orgId, id, profileId);
   }
 
+  /**
+   * Mesma regra do decorator @IsPublicHttpsUrl do DTO, aplicada aqui para os
+   * chamadores que nao passam pelo ValidationPipe (tools MCP chamam o service
+   * direto). Campo opcional: ausente/vazio passa.
+   */
+  private assertDmButtonUrl(dmButtonUrl?: string) {
+    if (!dmButtonUrl) {
+      return;
+    }
+    const error = checkPublicHttpsUrl(dmButtonUrl);
+    if (error) {
+      throw new BadRequestException(`dmButtonUrl: ${error}`);
+    }
+  }
+
   async quickCreateFlow(orgId: string, body: QuickCreateFlowDto, profileId?: string) {
+    await this.assertIntegrationAccess(orgId, body.integrationId, profileId);
+    this.assertDmButtonUrl(body.dmButtonUrl);
     const check = await this.checkIntegrationWebhook(orgId, body.integrationId);
     if (!check.ok) {
       throw new BadRequestException(check.error);
@@ -668,6 +740,9 @@ export class FlowsService {
     opts: { enabled: boolean; fallbackMessage?: string },
     profileId?: string
   ): Promise<{ flowId: string; status: FlowStatus }> {
+    // Mesmo guard dos outros caminhos de escrita: fecha IDOR por integrationId
+    // (chave de perfil ligando o bot de DM de um canal de outro perfil).
+    await this.assertIntegrationAccess(orgId, integrationId, profileId);
     const integration = await this._integrationService.getIntegrationById(
       orgId,
       integrationId
@@ -895,8 +970,10 @@ export class FlowsService {
     orgId: string,
     integrationId: string,
     cursor?: string,
-    limit = 25
+    limit = 25,
+    profileId?: string
   ) {
+    await this.assertIntegrationAccess(orgId, integrationId, profileId);
     const integration = await this._integrationService.getIntegrationById(
       orgId,
       integrationId
@@ -932,8 +1009,10 @@ export class FlowsService {
 
   async getInstagramStoriesByIntegration(
     orgId: string,
-    integrationId: string
+    integrationId: string,
+    profileId?: string
   ) {
+    await this.assertIntegrationAccess(orgId, integrationId, profileId);
     const integration = await this._integrationService.getIntegrationById(
       orgId,
       integrationId
@@ -965,8 +1044,8 @@ export class FlowsService {
     }
   }
 
-  getExecution(orgId: string, id: string) {
-    return this._flowsRepository.getExecution(orgId, id);
+  getExecution(orgId: string, id: string, flowId?: string) {
+    return this._flowsRepository.getExecution(orgId, id, flowId);
   }
 
   appendExecutionLog(

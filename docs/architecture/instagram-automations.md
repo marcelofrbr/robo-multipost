@@ -228,6 +228,8 @@ e configuravel no canvas.
 apps/backend/src/api/routes/
   ig-webhook.controller.ts            # webhook HMAC + branch de postback
   integrations.controller.ts          # OAuth controller + injecao de ClientInformation
+apps/backend/src/public-api/routes/v1/
+  public.flows.controller.ts          # API publica (/public/v1/flows): automacoes, execucoes, alvos, webhook-status, bot de DM — guia em docs/api/automacoes-e-dm.md
 
 apps/orchestrator/src/
   workflows/flow.execution.workflow.ts       # workflow principal (grafo do flow)
@@ -423,6 +425,9 @@ usuario (que caem no fluxo normal do `direct_message`). No MCP, o parametro
 
 - REST (backend): `GET /flows/dm/escalations` (lista) e
   `POST /flows/dm/escalations/:id/resolve` (fecha a conversa).
+- REST (API publica, chave de API): as mesmas operacoes em
+  `/public/v1/flows/dm/*` (`POST /flows/dm/bot` liga/desliga o bot) —
+  ver [`docs/api/automacoes-e-dm.md`](../api/automacoes-e-dm.md).
 - MCP: `configureDmBot` (liga/desliga + fallback por integration),
   `listDmEscalations` (lista escalacoes do perfil ativo) e `handoffToBot`
   (entrega a conversa de um comentario para o bot de DM). Resolvem

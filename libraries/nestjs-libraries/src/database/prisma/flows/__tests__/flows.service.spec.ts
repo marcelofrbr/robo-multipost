@@ -146,7 +146,13 @@ describe('FlowsService', () => {
     it('should delegate to repository', async () => {
       mockRepository.getFlows.mockResolvedValue([]);
       await service.getFlows('org-1', 'profile-1');
-      expect(mockRepository.getFlows).toHaveBeenCalledWith('org-1', 'profile-1');
+      expect(mockRepository.getFlows).toHaveBeenCalledWith('org-1', 'profile-1', undefined);
+    });
+
+    it('repassa o filtro por integrationId ao repositorio', async () => {
+      mockRepository.getFlows.mockResolvedValue([]);
+      await service.getFlows('org-1', 'profile-1', 'int-1');
+      expect(mockRepository.getFlows).toHaveBeenCalledWith('org-1', 'profile-1', 'int-1');
     });
   });
 
@@ -1730,9 +1736,186 @@ describe('FlowsService', () => {
 
       expect(mockRepository.getExecution).toHaveBeenCalledWith(
         'org-1',
-        'exec-1'
+        'exec-1',
+        undefined
       );
       expect(result).toEqual({ id: 'exec-1' });
     });
+  });
+});
+
+describe('FlowsService.assertIntegrationAccess (guard de integracao)', () => {
+  let service: FlowsService;
+
+  beforeEach(() => {
+    jest.resetAllMocks();
+    mockCredentialService.getRaw.mockResolvedValue({
+      clientId: 'fb-app',
+      clientSecret: 'fb-secret',
+    });
+    service = new FlowsService(
+      mockRepository,
+      mockTemporalService,
+      mockIntegrationService,
+      mockIntegrationManager,
+      mockCredentialService
+    );
+  });
+
+  it('quickCreateFlow responde 412 quando a integracao nao existe', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue(null);
+
+    await expect(
+      service.quickCreateFlow('org-1', { name: 'x', integrationId: 'int-404' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 412 });
+    expect(mockRepository.createFlow).not.toHaveBeenCalled();
+  });
+
+  it('quickCreateFlow responde 412 quando a integracao esta desativada', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: true,
+      profileId: null,
+    });
+
+    await expect(
+      service.quickCreateFlow('org-1', { name: 'x', integrationId: 'int-1' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 412 });
+  });
+
+  it('quickCreateFlow responde 412 quando o token da integracao expirou (refreshNeeded)', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      refreshNeeded: true,
+      profileId: null,
+    });
+
+    await expect(
+      service.quickCreateFlow('org-1', { name: 'x', integrationId: 'int-1' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 412 });
+  });
+
+  it('quickCreateFlow responde 400 para dmButtonUrl fora do padrao https publico (caminho MCP, sem ValidationPipe)', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: null,
+    });
+    // Webhook ok: garante que o 400 vem da URL, nao da checagem de webhook.
+    const webhookSpy = jest
+      .spyOn(service, 'checkIntegrationWebhook')
+      .mockResolvedValue({ ok: true } as any);
+
+    await expect(
+      service.quickCreateFlow(
+        'org-1',
+        { name: 'x', integrationId: 'int-1', dmButtonUrl: 'http://meusite.com/oferta' } as any,
+        'profile-1'
+      )
+    ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('dmButtonUrl') });
+    await expect(
+      service.quickCreateFlow(
+        'org-1',
+        { name: 'x', integrationId: 'int-1', dmButtonUrl: 'https://127.0.0.1/admin' } as any,
+        'profile-1'
+      )
+    ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('dmButtonUrl') });
+    expect(mockRepository.createFlow).not.toHaveBeenCalled();
+    webhookSpy.mockRestore();
+  });
+
+  it('quickUpdateFlow responde 400 para dmButtonUrl fora do padrao https publico', async () => {
+    mockRepository.getFlow.mockResolvedValue({ id: 'flow-1', integrationId: 'int-1' });
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: null,
+    });
+
+    await expect(
+      service.quickUpdateFlow(
+        'org-1',
+        'flow-1',
+        { name: 'x', integrationId: 'int-1', dmButtonUrl: 'javascript:alert(1)' } as any,
+        'profile-1'
+      )
+    ).rejects.toMatchObject({ status: 400 });
+    expect(mockRepository.updateFlow).not.toHaveBeenCalled();
+  });
+
+  it('quickCreateFlow responde 403 quando a integracao pertence a outro perfil', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: 'profile-outro',
+    });
+
+    await expect(
+      service.quickCreateFlow('org-1', { name: 'x', integrationId: 'int-1' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('createOrUpdateDirectMessageBotFlow responde 403 para integracao de outro perfil', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: 'profile-outro',
+      providerIdentifier: 'instagram',
+    });
+
+    await expect(
+      service.createOrUpdateDirectMessageBotFlow('org-1', 'int-1', { enabled: true }, 'profile-1')
+    ).rejects.toMatchObject({ status: 403 });
+    expect(mockRepository.createFlow).not.toHaveBeenCalled();
+  });
+
+  it('getInstagramPostsByIntegration responde 403 para integracao de outro perfil', async () => {
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: 'profile-outro',
+    });
+
+    await expect(
+      service.getInstagramPostsByIntegration('org-1', 'int-1', undefined, 25, 'profile-1')
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('integracao sem profileId (legado) e compartilhada: chave de perfil passa, como em getIntegrationById', async () => {
+    // Espelha o repositorio de integracoes (OR profileId / profileId null):
+    // canal sem perfil atribuido e visivel a todos os perfis da org. Mudar
+    // isso e decisao de produto, nao deste guard.
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-legado',
+      disabled: false,
+      profileId: null,
+    });
+
+    await expect(
+      service.assertIntegrationAccess('org-1', 'int-legado', 'profile-1')
+    ).resolves.toMatchObject({ id: 'int-legado' });
+  });
+
+  it('getExecution repassa o flowId ao repositorio', async () => {
+    mockRepository.getExecution.mockResolvedValue({ id: 'exec-1' });
+
+    await service.getExecution('org-1', 'exec-1', 'flow-1');
+
+    expect(mockRepository.getExecution).toHaveBeenCalledWith('org-1', 'exec-1', 'flow-1');
+  });
+
+  it('quickUpdateFlow responde 403 quando o flow aponta para integracao de outro perfil', async () => {
+    mockRepository.getFlow.mockResolvedValue({ id: 'flow-1', integrationId: 'int-1' });
+    mockIntegrationService.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      disabled: false,
+      profileId: 'profile-outro',
+    });
+
+    await expect(
+      service.quickUpdateFlow('org-1', 'flow-1', { name: 'x', integrationId: 'int-1' } as any, 'profile-1')
+    ).rejects.toMatchObject({ status: 403 });
+    expect(mockRepository.updateFlow).not.toHaveBeenCalled();
   });
 });

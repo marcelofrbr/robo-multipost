@@ -51,7 +51,11 @@ describe('StartupMigrationService', () => {
     };
 
     mediaCleanupService = createMock<MediaCleanupService>();
-    mediaCleanupService.cleanup.mockResolvedValue({ deleted: 0, skipped: 0 });
+    mediaCleanupService.cleanup.mockResolvedValue({
+      deleted: 0,
+      skipped: 0,
+      failed: 0,
+    });
 
     service = new StartupMigrationService(prisma, mediaCleanupService);
   });
