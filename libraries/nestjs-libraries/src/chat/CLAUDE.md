@@ -8,6 +8,7 @@
   - [`src/ai/CLAUDE.md`](../ai/CLAUDE.md) — AI Provider System this chat consumes via `factory.textForMastra(...)`
   - [`src/integrations/social/CLAUDE.md`](../integrations/social/CLAUDE.md) — providers triggered by the MCP tools
   - [`apps/orchestrator/CLAUDE.md`](../../../../apps/orchestrator/CLAUDE.md) — workflows triggered by the IG webhook (follow-gate)
+  - [`apps/backend/CLAUDE.md`](../../../../apps/backend/CLAUDE.md) — `src/public-api/` routes the 43 MCP tools mirror (same scope-guard services, e.g. `IntegrationService.createAuthUrl`)
 
 ## What lives here
 
@@ -138,6 +139,8 @@ Meta limits **one `sendPrivateReply` per comment**. After the postback, the 24h 
 5. **Symptom:** RAG returns no results → **Cause:** pgvector not enabled, or embeddings not generated. **Fix:** verify the `pgvector/pgvector:pg17` image and re-run the chunking pipeline; see [`docs/architecture/knowledge-base-rag.md`](../../../../docs/architecture/knowledge-base-rag.md).
 6. **Symptom:** new Flow in the wizard does not appear in the visual Flow Builder → **Cause:** only one UI was updated. **Fix:** update **both wizard + node-config-panel** (parity — they share the same `triggerConfig`).
 7. **Symptom:** Gemini (Google AI Studio) via OpenRouter returns `400 INVALID_ARGUMENT: function_declarations[N].parameters.properties[X].items.properties[Y].items.required[0]: property is not defined` → **Cause:** `z.any()` in a tool's `inputSchema` translates to an empty JSON Schema `{}`, which Gemini rejects when the field is `required`. OpenAI/Anthropic tolerate this; Gemini does not. **Fix:** use `z.string()` for the field and let the backend `JSON.parse` to reidratar arrays/objects/numbers/booleans (see `tryParseJson` helper in `integration.schedule.post.ts`). This rule applies ONLY to `inputSchema` (what the LLM generates); `outputSchema` is not validated by Gemini's tool-schema check, so `z.any()` there is fine. Whenever adding a Zod tool schema, never use `z.any()` for required input fields — declare a concrete type or `z.string()` + parse downstream.
+8. **Symptom:** `updateAutomation` (MCP) silently clears a field on an existing automation (e.g. a field that was just added to `QuickCreateFlowDto`) → **Cause:** `automationInputSchema` in `automations.tool.ts` is a hand-maintained mirror of `QuickCreateFlowDto`; `quickUpdateFlow` REWRITES the whole flow from the parsed input, so any field missing from the Zod schema is indistinguishable from "field cleared". **Fix:** whenever a field is added to/renamed in `QuickCreateFlowDto` (`libraries/nestjs-libraries/src/dtos/flows/flow.dto.ts`), mirror the same change in `automationInputSchema` in the same commit.
+9. **Symptom:** a new route mounted with `app.use(...)` in `start.mcp.ts` (or any future middleware-only route) has no rate limiting even though `ThrottlerBehindProxyGuard` is registered globally as `APP_GUARD` → **Cause:** `APP_GUARD` only runs for Nest's controller/decorator pipeline; routes wired directly on the Express app via `app.use` (like `/mcp`, `/mcp-oauth`, `/sse`, `/message`) never enter it. **Fix:** wire `createMcpRateLimit()` (`mcp-rate-limit.ts`) — or an equivalent per-route middleware — explicitly for any new `app.use`-mounted route; never assume the global guard covers it.
 
 ## Commands
 
