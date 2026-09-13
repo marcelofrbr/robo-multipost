@@ -7,6 +7,10 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Adicionado
+
+- **Filtro por data na biblioteca de mídia.** Em *Mídia* (e no seletor de mídia do "Criar publicação") agora dá para filtrar pela data de upload com atalhos — Hoje, 7 dias, 30 dias, Este mês — ou um período livre (De/Até). O filtro roda no servidor (`GET /media?from=&to=`, datas ISO), então a paginação continua correta; trocar o filtro volta para a primeira página, e com o filtro ativo sem resultados aparece "Nenhuma mídia neste período" com o botão Limpar. De quebra, a contagem de páginas passou a ignorar mídias apagadas (antes inflava o número de páginas).
+
 ### Corrigido
 
 - **"Conectar nova conta via Zernio" passa a concluir a conexão do canal.** Em *Adicionar canal → Zernio*, o botão de conectar uma conta nova (TikTok, Instagram, etc.) levava ao OAuth corretamente e o Zernio conectava a conta **do lado dele** — mas, ao voltar para o app, a tela mostrava "Não foi possível adicionar o provedor" e o canal nunca era gravado. Causa: o Zernio devolve o navegador com `connected`, `profileId`, `accountId` e `username` na URL (sem `state`/`code`), e a página de retorno enviava isso ao fluxo genérico `social-connect`, que exige `state`/`code` e rejeitava a requisição (400). Agora a página de retorno reconhece o retorno do Zernio e vincula a conta pelo mesmo endpoint autenticado usado ao clicar numa conta da lista do modal (`POST /integrations/zernio/connect-account`), preservando o **perfil ativo** e o `internalId` com sufixo do perfil (a mesma conta Zernio pode existir em mais de um perfil). Se o Zernio devolver `error` na URL, a mensagem é exibida traduzida em vez do erro genérico. Efeito prático: conectar um segundo TikTok (por exemplo, um por perfil) passa a funcionar direto pela interface.
