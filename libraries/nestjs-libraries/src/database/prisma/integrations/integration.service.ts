@@ -306,6 +306,49 @@ export class IntegrationService {
     return integration;
   }
 
+  /**
+   * URL de OAuth para conectar um canal via API publica ou MCP. Grava no
+   * Redis o que o callback (no.auth.integrations.controller) precisa:
+   * organization:/login:/profile:/refresh: + state, com TTL de 1h. Uma unica
+   * implementacao para REST e MCP — mudanca de regra (TTL, chaves) e feita aqui.
+   */
+  async createAuthUrl(
+    orgId: string,
+    provider: string,
+    opts: { profileId?: string; refresh?: string }
+  ): Promise<{ url: string }> {
+    if (!this._integrationManager.getAllowedSocialsIntegrations().includes(provider)) {
+      throw new HttpException({ msg: 'Integration not allowed' }, 400);
+    }
+    const integrationProvider = this._integrationManager.getSocialIntegration(provider);
+    if (integrationProvider.externalUrl) {
+      throw new HttpException(
+        { msg: 'This integration requires an external URL and is not supported via the public API' },
+        400
+      );
+    }
+
+    let auth: { url: string; state: string; codeVerifier: string };
+    try {
+      auth = await integrationProvider.generateAuthUrl();
+    } catch (err) {
+      throw new HttpException({ msg: 'Failed to generate auth URL' }, 500);
+    }
+
+    const { codeVerifier, state, url } = auth;
+    if (opts.refresh) {
+      await ioRedis.set(`refresh:${state}`, opts.refresh, 'EX', 3600);
+    }
+    await ioRedis.set(`organization:${state}`, orgId, 'EX', 3600);
+    await ioRedis.set(`login:${state}`, codeVerifier, 'EX', 3600);
+    // Perfil da chave viaja no state: o callback grava o canal ja no perfil
+    // certo, em vez de deixa-lo sem perfil (compartilhado).
+    if (opts.profileId) {
+      await ioRedis.set(`profile:${state}`, opts.profileId, 'EX', 3600);
+    }
+    return { url };
+  }
+
   async validateIntegrationProfile(orgId: string, integrationId: string, profileId?: string) {
     if (!profileId) return;
     const integration = await this._integrationRepository.getIntegrationById(orgId, integrationId);

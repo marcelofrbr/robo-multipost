@@ -328,6 +328,22 @@ describe('PublicIntegrationsController - canais e escopo de perfil em posts (ent
     expect((postsService as any).createPost).toHaveBeenCalled();
   });
 
+  it('GET /social/:provider delega a geracao da URL ao IntegrationService com o perfil resolvido', async () => {
+    (integrationService as any).createAuthUrl = jest.fn().mockResolvedValue({ url: 'https://meta/oauth' });
+
+    const r = await controller.getIntegrationUrl('instagram', undefined as any, org, 'prof-1', undefined);
+
+    expect(r).toEqual({ url: 'https://meta/oauth' });
+    expect((integrationService as any).createAuthUrl).toHaveBeenCalledWith('org-1', 'instagram', {
+      profileId: 'prof-1',
+      refresh: undefined,
+    });
+
+    await expect(
+      controller.getIntegrationUrl('instagram', undefined as any, org, 'prof-1', 'prof-9')
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
   it('GET /posts filtra pelo perfil da chave (ou ?profileId com chave de org)', async () => {
     postsService.getPosts.mockResolvedValue([]);
 

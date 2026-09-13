@@ -26,6 +26,14 @@ export class MediaListTool implements AgentToolInterface {
           .string()
           .optional()
           .describe('Pagina da listagem (default 1)'),
+        from: z
+          .string()
+          .optional()
+          .describe('Inicio do periodo pela data de upload (ISO 8601)'),
+        to: z
+          .string()
+          .optional()
+          .describe('Fim do periodo pela data de upload (ISO 8601, inclusivo)'),
       }),
       outputSchema: z.object({
         total: z.number(),
@@ -46,7 +54,10 @@ export class MediaListTool implements AgentToolInterface {
         const profileId = getProfileId();
         const page = parseInt(input?.page || '1', 10) || 1;
         const stats = await this._mediaService.getMediaStats(org.id, profileId);
-        const list = await this._mediaService.getMedia(org.id, page, profileId);
+        const list = await this._mediaService.getMedia(org.id, page, profileId, {
+          from: input?.from,
+          to: input?.to,
+        });
         return {
           total: stats.total,
           totalSizeBytes: stats.totalSizeBytes,
