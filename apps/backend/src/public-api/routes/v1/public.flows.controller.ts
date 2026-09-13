@@ -116,7 +116,6 @@ export class PublicFlowsController {
     private _scope: PublicApiScopeService
   ) {}
 
-
   @Post('/flows')
   @ApiOperation({
     summary: 'Criar automação de comentário/story do Instagram',

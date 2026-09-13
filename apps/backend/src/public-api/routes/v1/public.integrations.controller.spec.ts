@@ -303,6 +303,7 @@ describe('PublicIntegrationsController - canais e escopo de perfil em posts (ent
     (postsService as any).updateReleaseId = jest.fn().mockResolvedValue({ id: 'p1' });
 
     await controller.findSlotIntegration(org, 'prof-1', 'int-1');
+    expect((postsService as any).findFreeDateTime).toHaveBeenCalledWith('org-1', 'int-1', 'prof-1');
     await controller.deleteChannel(org, 'prof-1', 'int-1');
     expect(integrationService.getIntegrationInScope).toHaveBeenCalledWith('org-1', 'int-1', 'prof-1');
     expect(integrationService.getIntegrationInScope).toHaveBeenCalledTimes(2);

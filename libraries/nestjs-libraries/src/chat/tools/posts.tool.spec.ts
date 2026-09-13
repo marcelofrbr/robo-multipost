@@ -87,7 +87,7 @@ describe('posts tools', () => {
       date: '2026-09-22T12:00:00.000Z',
     });
     expect(integrations.getIntegrationInScope).toHaveBeenCalledWith('org-1', 'int-1', 'prof-1');
-    expect(posts.findFreeDateTime).toHaveBeenCalledWith('org-1', 'int-1');
+    expect(posts.findFreeDateTime).toHaveBeenCalledWith('org-1', 'int-1', 'prof-1');
   });
 
   it('postStatistics valida o escopo e devolve os cliques', async () => {

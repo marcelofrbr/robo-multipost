@@ -68,7 +68,6 @@ export class PublicIntegrationsController {
     private _scope: PublicApiScopeService
   ) {}
 
-
   @Post('/upload')
   @UseInterceptors(FileInterceptor('file'))
   async uploadSimple(
@@ -122,7 +121,13 @@ export class PublicIntegrationsController {
       id,
       publicApiProfileId
     );
-    return { date: await this._postsService.findFreeDateTime(org.id, id) };
+    return {
+      date: await this._postsService.findFreeDateTime(
+        org.id,
+        id,
+        publicApiProfileId
+      ),
+    };
   }
 
   @Get('/posts')

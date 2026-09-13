@@ -20,7 +20,8 @@ The conversational agent layer (Mastra) + MCP tools the agent can invoke + infra
 | `tools/` | 43 MCP tools the agent can invoke — full parity with `/public/v1` (see [`docs/api/mcp.md`](../../../../docs/api/mcp.md)) |
 | `vector/` | Vectorization helpers for RAG (Knowledge Base) |
 | `helpers/` | Shared helpers |
-| `start.mcp.ts` | Entry point to initialize the MCP server |
+| `start.mcp.ts` | Entry point to initialize the MCP server. Routes are mounted with `app.use` (outside Nest's guard pipeline) — rate limiting comes from `mcp-rate-limit.ts`, not `ThrottlerBehindProxyGuard` |
+| `mcp-rate-limit.ts` | `createMcpRateLimit`: Redis counter per token (sha256 hash, never the raw key) and per IP for `/mcp*`, `/sse*`, `/message*`; 429 above the window; fail-open when Redis is down |
 | `auth.context.ts` / `async.storage.ts` | Context propagation (org/profile) between agent and tools |
 | `oauth-middleware.ts` / `oauth-types.ts` | OAuth helper for authenticated MCP endpoints |
 

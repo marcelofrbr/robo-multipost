@@ -98,6 +98,10 @@ Cada tool espelha uma rota da API pública e passa pelos **mesmos guards de esco
 - "Quais conversas o bot de DM passou para humano hoje? Marque a primeira como resolvida." → `listDmEscalations` + `resolveDmEscalation`
 - "Desative o canal do YouTube até segunda." → `integrationList` + `integrationDisable`
 
+## Limites
+
+Por token: 120 requisições/min; por IP: 300/min. Acima disso o servidor responde **429** (`{ "error": "rate_limited", "retryAfterSeconds": 60 }`).
+
 ## Erros
 
 As tools devolvem a mensagem do backend: `Post not found` (fora do escopo), `Integration belongs to another profile`, `Profile key cannot access another profile`, `Integracao desativada ou com token expirado`, etc. — os mesmos textos e regras da REST. Sem organização no contexto (chave inválida) a tool falha com `MCP: organizacao ausente no contexto`.

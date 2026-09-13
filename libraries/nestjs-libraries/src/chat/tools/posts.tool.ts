@@ -194,8 +194,9 @@ export class FindFreeSlotTool implements AgentToolInterface {
       outputSchema: z.object({ date: z.string() }),
       execute: async (input: any) => {
         const orgId = requireOrgId();
-        await this._integrationService.getIntegrationInScope(orgId, input.integrationId, getProfileId());
-        const date = await this._postsService.findFreeDateTime(orgId, input.integrationId);
+        const profileId = getProfileId();
+        await this._integrationService.getIntegrationInScope(orgId, input.integrationId, profileId);
+        const date = await this._postsService.findFreeDateTime(orgId, input.integrationId, profileId);
         return { date: String(date) };
       },
     });

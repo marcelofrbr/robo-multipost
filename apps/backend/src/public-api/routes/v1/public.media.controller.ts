@@ -62,7 +62,6 @@ export class PublicMediaController {
     private _scope: PublicApiScopeService
   ) {}
 
-
   @Get('/media')
   @ApiOperation({
     summary: 'Listar a biblioteca de mídia',

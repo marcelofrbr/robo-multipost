@@ -4,6 +4,8 @@ import { runWithContext } from '@gitroom/nestjs-libraries/chat/async.storage';
 import { createMock } from '@gitroom/nestjs-libraries/test';
 import { FlowsService } from '@gitroom/nestjs-libraries/database/prisma/flows/flows.service';
 import {
+  ListAutomationsTool,
+  SetAutomationStatusTool,
   ListInstagramPostsForAutomationTool,
   CreateCommentAutomationTool,
   GetAutomationTool,
@@ -18,6 +20,25 @@ const run = (tool: any, input: any) =>
   runWithContext(ctx, () => tool.run().execute(input, {} as any));
 
 describe('automations tools (paridade com /public/v1/flows)', () => {
+  it('listAutomations lista os flows do perfil do contexto', async () => {
+    const flows = createMock<FlowsService>();
+    flows.getFlows.mockResolvedValue([{ id: 'flow-1' }] as any);
+
+    const r = await run(new ListAutomationsTool(flows), {});
+
+    expect(flows.getFlows).toHaveBeenCalledWith('org-1', 'prof-1');
+    expect(r).toEqual({ output: [{ id: 'flow-1' }] });
+  });
+
+  it('setAutomationStatus repassa status com escopo do perfil', async () => {
+    const flows = createMock<FlowsService>();
+    flows.updateFlowStatus.mockResolvedValue({ id: 'flow-1', status: 'PAUSED' } as any);
+
+    await run(new SetAutomationStatusTool(flows), { flowId: 'flow-1', status: 'PAUSED' });
+
+    expect(flows.updateFlowStatus).toHaveBeenCalledWith('org-1', 'flow-1', 'PAUSED', 'prof-1');
+  });
+
   it('listInstagramPostsForAutomation passa o perfil do contexto ao service (escopo do canal)', async () => {
     const flows = createMock<FlowsService>();
     flows.getInstagramPostsByIntegration.mockResolvedValue({ posts: [], nextCursor: undefined } as any);

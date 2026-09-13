@@ -54,7 +54,6 @@ export class PublicPostsController {
     private _scope: PublicApiScopeService
   ) {}
 
-
   @Get('/posts/group/:group')
   @ApiOperation({ summary: 'Todos os posts de um grupo (publicação multi-canal)' })
   @ApiParam({ name: 'group', description: 'ID do grupo (campo `group` de POST /posts)' })
