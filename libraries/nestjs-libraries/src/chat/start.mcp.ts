@@ -8,6 +8,7 @@ import { OAuthService } from '@gitroom/nestjs-libraries/database/prisma/oauth/oa
 import { ProfileService } from '@gitroom/nestjs-libraries/database/prisma/profiles/profile.service';
 import { runWithContext } from './async.storage';
 import { createOAuthMiddleware } from './oauth-middleware';
+import { createMcpRateLimit } from './mcp-rate-limit';
 const fixAcceptHeader = (req: Request) => {
   const value = 'application/json, text/event-stream';
   req.headers.accept = value;
@@ -98,6 +99,9 @@ export const startMcp = async (app: INestApplication) => {
       scopes_supported: ['mcp:read', 'mcp:write'],
     });
   });
+
+  // Rate limit proprio: estas rotas nao passam pelo APP_GUARD do Nest.
+  app.use(['/mcp', '/mcp-oauth', '/sse', '/message'], createMcpRateLimit());
 
   app.use('/mcp-oauth', async (req: Request, res: Response, next: () => void) => {
     // Skip if this is the /mcp/:id route

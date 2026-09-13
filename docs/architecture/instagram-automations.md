@@ -429,7 +429,7 @@ usuario (que caem no fluxo normal do `direct_message`). No MCP, o parametro
   `/public/v1/flows/dm/*` (`POST /flows/dm/bot` liga/desliga o bot) —
   ver [`docs/api/automacoes-e-dm.md`](../api/automacoes-e-dm.md).
 - MCP: `configureDmBot` (liga/desliga + fallback por integration),
-  `listDmEscalations` (lista escalacoes do perfil ativo) e `handoffToBot`
+  `listDmEscalations` (lista escalacoes do perfil ativo), `resolveDmEscalation` (fecha a conversa escalada) e `handoffToBot`
   (entrega a conversa de um comentario para o bot de DM). Resolvem
   org/perfil via `AsyncLocalStorage` (nunca aceitam `orgId` no schema).
 

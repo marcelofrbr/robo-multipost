@@ -51,7 +51,6 @@ import { getValidationSchemas } from '@gitroom/nestjs-libraries/chat/validation.
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { timer } from '@gitroom/helpers/utils/timer';
-import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 
 @ApiTags('Public API')
 @ApiSecurity('api-key')
@@ -68,7 +67,6 @@ export class PublicIntegrationsController {
     private _refreshIntegrationService: RefreshIntegrationService,
     private _scope: PublicApiScopeService
   ) {}
-
 
   @Post('/upload')
   @UseInterceptors(FileInterceptor('file'))
@@ -123,7 +121,13 @@ export class PublicIntegrationsController {
       id,
       publicApiProfileId
     );
-    return { date: await this._postsService.findFreeDateTime(org.id, id) };
+    return {
+      date: await this._postsService.findFreeDateTime(
+        org.id,
+        id,
+        publicApiProfileId
+      ),
+    };
   }
 
   @Get('/posts')
@@ -136,7 +140,8 @@ export class PublicIntegrationsController {
   ) {
     Sentry.metrics.count('public_api-request', 1);
     // Chave de perfil ve so os posts do perfil (mesma regra do dashboard).
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       query.profileId
     );
@@ -228,7 +233,8 @@ export class PublicIntegrationsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -251,7 +257,13 @@ export class PublicIntegrationsController {
   }
 
   @Get('/social/:integration')
+  @ApiOperation({
+    summary: 'URL de OAuth para conectar um canal',
+    description:
+      'Abra a URL no navegador para dar o consentimento. O canal nasce no perfil da chave (ou do `?profileId`).',
+  })
   @ApiQuery({ name: 'profileId', required: false })
+  @ApiResponse({ status: 400, description: 'Provedor não permitido ou que exige URL externa' })
   @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
   async getIntegrationUrl(
     @Param('integration') integration: string,
@@ -261,49 +273,15 @@ export class PublicIntegrationsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    // Fora do try: 403 nao pode virar o 500 generico do catch abaixo.
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
-    if (
-      !this._integrationManager
-        .getAllowedSocialsIntegrations()
-        .includes(integration)
-    ) {
-      throw new HttpException({ msg: 'Integration not allowed' }, 400);
-    }
-
-    const integrationProvider =
-      this._integrationManager.getSocialIntegration(integration);
-
-    if (integrationProvider.externalUrl) {
-      throw new HttpException(
-        { msg: 'This integration requires an external URL and is not supported via the public API' },
-        400
-      );
-    }
-
-    try {
-      const { codeVerifier, state, url } =
-        await integrationProvider.generateAuthUrl();
-
-      if (refresh) {
-        await ioRedis.set(`refresh:${state}`, refresh, 'EX', 3600);
-      }
-
-      await ioRedis.set(`organization:${state}`, org.id, 'EX', 3600);
-      await ioRedis.set(`login:${state}`, codeVerifier, 'EX', 3600);
-      // Perfil da chave (ou ?profileId) viaja no state: o callback grava o
-      // canal ja no perfil certo, em vez de deixa-lo sem perfil (compartilhado).
-      if (effectiveProfileId) {
-        await ioRedis.set(`profile:${state}`, effectiveProfileId, 'EX', 3600);
-      }
-
-      return { url };
-    } catch (err) {
-      throw new HttpException({ msg: 'Failed to generate auth URL' }, 500);
-    }
+    return this._integrationService.createAuthUrl(org.id, integration, {
+      profileId: effectiveProfileId,
+      refresh: refresh || undefined,
+    });
   }
 
   @Get('/notifications')
@@ -379,7 +357,8 @@ export class PublicIntegrationsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -412,7 +391,8 @@ export class PublicIntegrationsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -451,7 +431,8 @@ export class PublicIntegrationsController {
     @Body() body: UpdateIntegrationSettingsDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );

@@ -116,7 +116,6 @@ export class PublicFlowsController {
     private _scope: PublicApiScopeService
   ) {}
 
-
   @Post('/flows')
   @ApiOperation({
     summary: 'Criar automação de comentário/story do Instagram',
@@ -156,7 +155,8 @@ export class PublicFlowsController {
     @Body() body: QuickCreateFlowDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -195,7 +195,8 @@ export class PublicFlowsController {
     @Query('integrationId') integrationId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -218,7 +219,8 @@ export class PublicFlowsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -246,7 +248,8 @@ export class PublicFlowsController {
     @Body() body: QuickCreateFlowDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -279,7 +282,8 @@ export class PublicFlowsController {
     @Body() body: UpdateFlowStatusDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -304,7 +308,8 @@ export class PublicFlowsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -422,7 +427,8 @@ export class PublicFlowsController {
     @Query('limit') limit?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -452,7 +458,8 @@ export class PublicFlowsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -481,7 +488,8 @@ export class PublicFlowsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -512,7 +520,8 @@ export class PublicFlowsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -536,7 +545,8 @@ export class PublicFlowsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );
@@ -557,7 +567,8 @@ export class PublicFlowsController {
     @Query('profileId') profileId?: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const effectiveProfileId = await this._scope.resolveProfileId(org.id, 
+    const effectiveProfileId = await this._scope.resolveProfileId(
+      org.id,
       publicApiProfileId,
       profileId
     );

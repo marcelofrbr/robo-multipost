@@ -89,3 +89,5 @@ A automação nasce **ativa** (`status: ACTIVE`); ao ativar, o app inscreve a co
 Todas as rotas também aparecem na documentação interativa: `https://<seu-dominio>/api/docs` (Swagger, seção **Automações (Flows)**) — clique em **Authorize** e cole a chave de API.
 
 Guia irmão: [Posts, mídia e canais](posts-midia-canais.md).
+
+Mesmas operações via agente de IA: [MCP](mcp.md).

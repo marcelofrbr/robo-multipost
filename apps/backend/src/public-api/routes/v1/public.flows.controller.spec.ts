@@ -326,7 +326,7 @@ describe('PublicFlowsController', () => {
   describe('executions', () => {
     it('lista execucoes do flow com paginacao e escopo de perfil', async () => {
       flowsService.getFlow.mockResolvedValue({ id: 'flow-1' });
-      flowsService.getExecutions.mockResolvedValue({ items: [], total: 0 });
+      flowsService.getExecutions.mockResolvedValue([]);
 
       const result = await controller.listExecutions(org, 'profile-1', 'flow-1', '2', '10');
 
@@ -335,7 +335,7 @@ describe('PublicFlowsController', () => {
 
       await controller.listExecutions(org, 'profile-1', 'flow-1', '-3', '9999');
       expect(flowsService.getExecutions).toHaveBeenLastCalledWith('org-1', 'flow-1', 1, 100);
-      expect(result).toEqual({ items: [], total: 0 });
+      expect(result).toEqual([]);
     });
 
     it('lanca 404 quando o flow nao pertence ao escopo', async () => {
