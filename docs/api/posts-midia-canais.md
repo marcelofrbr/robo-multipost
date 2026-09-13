@@ -100,3 +100,5 @@ Segredos e administração (chave Zernio, credenciais Meta/IA, membros, criaçã
 | 429 | Limites: 60/min para mudar data, comentar, apagar posts e apagar/editar mídia; 30/hora para ativar, desativar e configurar canal |
 
 Todas as rotas também aparecem na documentação interativa: `https://<seu-dominio>/api/docs` (Swagger, seções **Posts**, **Mídia** e **Public API**) — clique em **Authorize** e cole a chave de API.
+
+Mesmas operações via agente de IA: [MCP](mcp.md).

@@ -17,7 +17,7 @@ The conversational agent layer (Mastra) + MCP tools the agent can invoke + infra
 |---|---|
 | `mastra.service.ts` / `mastra.store.ts` | Mastra agent bootstrap and store |
 | `agent.model.resolver.ts` | Resolves the lazy `LanguageModel` via the AI factory |
-| `tools/` | 12+ MCP tools the agent can invoke |
+| `tools/` | 43 MCP tools the agent can invoke — full parity with `/public/v1` (see [`docs/api/mcp.md`](../../../../docs/api/mcp.md)) |
 | `vector/` | Vectorization helpers for RAG (Knowledge Base) |
 | `helpers/` | Shared helpers |
 | `start.mcp.ts` | Entry point to initialize the MCP server |
@@ -89,11 +89,16 @@ Meta limits **one `sendPrivateReply` per comment**. After the postback, the 24h 
 | `knowledge.query.tool.ts` | Query the profile's Knowledge Base (RAG) |
 | `web-search.tool.ts` | Web search via `AiWebSearchService` |
 | `upload.media.from.url.tool.ts` | Host external media from a public URL via `MediaService.uploadFromUrl` → `{ id, path }` for use as a post attachment |
-| `automations.tool.ts` | Flows over MCP: `listAutomations`, `listInstagramPostsForAutomation`, `createCommentAutomation` (maps to `QuickCreateFlowDto`; inclui campo `handoffToBot`), `setAutomationStatus`, via `FlowsService` |
-| `media.list.tool.ts` | `listMedia`: lists media in the org/profile gallery via `AsyncLocalStorage` (no `orgId` in schema) |
+| `automations.tool.ts` | Flows over MCP: `listAutomations`, `listInstagramPostsForAutomation` (passes `getProfileId()` → channel scope), `createCommentAutomation`, `updateAutomation`, `getAutomation`, `deleteAutomation`, `automationExecutions` (page/limit clamped like the public controller), `webhookStatus`, `setAutomationStatus`, via `FlowsService`. `automationInputSchema` mirrors `QuickCreateFlowDto` in full (story_reply, `storyIds`, `matchMode: exact`, two-step follow-gate, `handoffToBot`) — `quickUpdateFlow` REWRITES the flow, so a narrower schema would silently drop fields |
+| `posts.tool.ts` | `listPosts`, `getPost` (via `toPublicPostPayload` — no channel tokens), `deletePost`, `changePostDate`, `findFreeSlot` (channel scope), `postStatistics`, `createPostComment` (author = `OrganizationService.getOwnerUserId`) — all through `PostsService.getPostInScope` |
+| `analytics.tool.ts` | `integrationAnalytics`, `postAnalytics` |
+| `profiles.notifications.tool.ts` | `listProfiles` (profile key sees only itself), `listNotifications` |
+| `media.manage.tool.ts` | `deleteMedia`, `saveMediaInformation` — through `MediaService.getMediaInScope` |
+| `integration.manage.tool.ts` | `integrationEnable`, `integrationDisable`, `integrationSettings` (read/write), `integrationAuthUrl` (→ `IntegrationService.createAuthUrl`, the single OAuth-URL implementation shared with `GET /public/v1/social/:provider`) — through `IntegrationService.getIntegrationInScope` |
+| `media.list.tool.ts` | `listMedia`: lists media in the org/profile gallery via `AsyncLocalStorage` (no `orgId` in schema); optional `from`/`to` (upload date) |
 | `media.cleanup.tool.ts` | `cleanupMedia`: triggers `MediaCleanupService.cleanup()` and returns `{ deleted, skipped, failed }` |
 | `dm-bot.config.tool.ts` | `configureDmBot`: liga/desliga o bot de DM de um perfil (seta o status do Flow `direct_message`) |
-| `dm-escalations.list.tool.ts` | `listDmEscalations`: lista conversas de DM escaladas para atendimento humano |
+| `dm-escalations.list.tool.ts` | `listDmEscalations`: lista conversas de DM escaladas para atendimento humano; `resolveDmEscalation`: fecha a conversa via `DmFlowService.resolveConversation` (404 fora do escopo) |
 | `tool.list.ts` | Central registry of available tools |
 | `tool.context.helper.ts` | Helper to extract org/profile from `AsyncLocalStorage` |
 
