@@ -87,6 +87,10 @@ The `--color-custom*` variables are **deprecated**. Use `--new-*` tokens and Tai
 
 **Never install UI component libraries from npm** (Material UI, Chakra, isolated Radix, etc.) — write native components in React + Tailwind. Reusable primitives live in `libraries/react-shared-libraries/src/form/` (button, input, select, checkbox, slider, color-picker, custom-select, textarea, canonical).
 
+### Unit tests for pure helpers — vitest, `*.test.ts`
+
+Pure, framework-free helper functions (parsers, formatters — no React/SWR) get a co-located `*.test.ts` spec run by vitest (zero-config, root devDependency). This is a **different suffix and runner** than the backend/libraries `.spec.ts` (Jest) convention — do not mix them up, and note that no `pnpm test*` script runs vitest: execute it explicitly from the repo root with `pnpm exec vitest run apps/frontend/src/<path>`. Examples: `src/components/launches/generator/generator.stream.test.ts`, `src/components/launches/zernio/zernio-callback.helper.test.ts`.
+
 ## Key File Map
 
 | File | Purpose |

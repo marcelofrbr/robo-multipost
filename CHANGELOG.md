@@ -7,6 +7,14 @@ Fork do [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0).
 
 ## [Unreleased]
 
+### Corrigido
+
+- **"Conectar nova conta via Zernio" passa a concluir a conexão do canal.** Em *Adicionar canal → Zernio*, o botão de conectar uma conta nova (TikTok, Instagram, etc.) levava ao OAuth corretamente e o Zernio conectava a conta **do lado dele** — mas, ao voltar para o app, a tela mostrava "Não foi possível adicionar o provedor" e o canal nunca era gravado. Causa: o Zernio devolve o navegador com `connected`, `profileId`, `accountId` e `username` na URL (sem `state`/`code`), e a página de retorno enviava isso ao fluxo genérico `social-connect`, que exige `state`/`code` e rejeitava a requisição (400). Agora a página de retorno reconhece o retorno do Zernio e vincula a conta pelo mesmo endpoint autenticado usado ao clicar numa conta da lista do modal (`POST /integrations/zernio/connect-account`), preservando o **perfil ativo** e o `internalId` com sufixo do perfil (a mesma conta Zernio pode existir em mais de um perfil). Se o Zernio devolver `error` na URL, a mensagem é exibida traduzida em vez do erro genérico. Efeito prático: conectar um segundo TikTok (por exemplo, um por perfil) passa a funcionar direto pela interface.
+
+### Segurança
+
+- **`POST /integrations/zernio/connect-account` valida a conta no Zernio antes de criar o canal.** O endpoint aceitava `accountId`, `username` e `displayName` do cliente sem conferir; como o retorno do OAuth do Zernio chega por query params (sem `state`), um link forjado aberto por um usuário logado poderia criar um canal com nome falso apontando para uma conta que não é dele. Agora o backend consulta `listAccounts` do perfil Zernio informado **com a chave do próprio usuário**, exige que o `accountId` esteja na lista e que a plataforma confira, e grava nome/username vindos do Zernio — `username`/`displayName` do body passam a ser ignorados. Pior caso de um link forjado: vincular uma conta Zernio que já é do próprio usuário (o mesmo que um clique no modal faria).
+
 ## [0.5.6] - 2026-09-09
 
 ### Adicionado

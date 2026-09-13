@@ -11,6 +11,10 @@ import { continueProviderList } from '@gitroom/frontend/components/new-launch/pr
 import { IntegrationContext } from '@gitroom/frontend/components/launches/helpers/use.integration';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
+import {
+  parseZernioCallback,
+  ZernioCallback,
+} from '@gitroom/frontend/components/launches/zernio/zernio-callback.helper';
 
 interface TwoStepState {
   integrationId: string;
@@ -94,8 +98,71 @@ export const ContinueIntegration: FC<{
     return searchParams;
   }, []);
 
+  // Retorno do OAuth iniciado em "Conectar nova conta via Zernio". O Zernio ja
+  // conectou a conta no perfil dele e devolve accountId/profileId na URL — sem
+  // `state`/`code`, entao o fluxo generico (`social-connect`) rejeitaria o
+  // retorno. Vincula pelo mesmo endpoint autenticado usado ao clicar numa conta
+  // da lista do modal; o backend confere que a conta pertence ao perfil Zernio
+  // do usuario e resolve nome/plataforma por conta propria.
+  const connectZernioAccount = useCallback(
+    async (callback: ZernioCallback) => {
+      if (callback.kind === 'error') {
+        setErrorMessage(
+          t(
+            'zernio_connect_failed',
+            'Zernio could not connect the account ({{error}})',
+            { error: callback.message }
+          )
+        );
+        setError(true);
+        return;
+      }
+
+      try {
+        const response = await fetch('/integrations/zernio/connect-account', {
+          method: 'POST',
+          body: JSON.stringify({
+            zernioProfileId: callback.zernioProfileId,
+            accountId: callback.accountId,
+            platform: callback.platform,
+          }),
+        });
+
+        if (
+          response.status !== HttpStatusCode.Ok &&
+          response.status !== HttpStatusCode.Created
+        ) {
+          const errorData = await response.json().catch(() => ({}));
+          setErrorMessage(
+            errorData.message ||
+              t('failed_to_add_channel', 'Failed to add channel')
+          );
+          setError(true);
+          return;
+        }
+      } catch {
+        setErrorMessage(t('failed_to_add_channel', 'Failed to add channel'));
+        setError(true);
+        return;
+      }
+
+      navigateOrShow(
+        `/launches?added=${provider}&msg=${t('channel_added', 'Channel Added')}`,
+        undefined,
+        t('channel_added', 'Channel Added')
+      );
+    },
+    [fetch, navigateOrShow, provider, t]
+  );
+
   useEffect(() => {
     (async () => {
+      const zernioCallback = parseZernioCallback(provider, searchParams);
+      if (zernioCallback) {
+        await connectZernioAccount(zernioCallback);
+        return;
+      }
+
       const timezone = String(dayjs.tz().utcOffset());
 
       // Try public endpoint first (handles both public and fallback scenarios)

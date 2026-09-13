@@ -1147,6 +1147,7 @@
   "failed_to_add_channel": "Falha ao adicionar canal",
   "failed_to_create_invite_link": "Falha ao criar link de convite",
   "failed_to_get_connect_url": "Falha ao obter URL de conexão",
+  "zernio_connect_failed": "O Zernio não conseguiu conectar a conta ({{error}})",
   "connect_new_account": "Conectar uma nova conta via Zernio",
   "select_platform_to_connect": "Selecione uma plataforma para conectar:",
   "zernio_sharing_settings": "Configurações de Compartilhamento Zernio",
