@@ -55,10 +55,28 @@ export interface IAuthenticator {
   ): Promise<{ id: string; url: string }[]>;
 }
 
+export type AnalyticsUnit = 'count' | 'percent' | 'seconds';
+/** period = soma/valor do periodo; snapshot = valor atual da conta; lifetime = total desde a publicacao. */
+export type AnalyticsKind = 'period' | 'snapshot' | 'lifetime';
+
+/**
+ * Contrato das metricas. Campos opcionais sao aditivos: quem nao os envia
+ * continua sendo exibido como antes (soma de `data`, ou media com `average`).
+ * Detalhes em docs/architecture/analytics-metricas.md.
+ */
 export interface AnalyticsData {
   label: string;
   data: Array<{ total: string; date: string }>;
+  /** Variacao real vs. periodo anterior de mesmo tamanho; 0 = sem comparacao. */
   percentageChange: number;
+  /** Valor oficial do periodo; quando presente, a UI exibe ele em vez de somar `data`. */
+  summary?: number;
+  /** Mesmo valor no periodo anterior. */
+  previous?: number;
+  unit?: AnalyticsUnit;
+  kind?: AnalyticsKind;
+  /** Legado: a UI tira a media de `data` em vez de somar. */
+  average?: boolean;
 }
 
 

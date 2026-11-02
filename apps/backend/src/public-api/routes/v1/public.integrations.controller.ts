@@ -524,23 +524,46 @@ export class PublicIntegrationsController {
   }
 
   @Get('/analytics/:integration')
+  @ApiResponse({ status: 403, description: 'Canal de outro perfil' })
+  @ApiResponse({ status: 404, description: 'Canal inexistente' })
   async getAnalytics(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('integration') integration: string,
     @Query('date') date: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    return this._integrationService.checkAnalytics(org, integration, date);
+    // Chave de perfil so le canais do proprio perfil (ou compartilhados).
+    await this._integrationService.getIntegrationInScope(
+      org.id,
+      integration,
+      publicApiProfileId
+    );
+    return this._integrationService.checkAnalytics(
+      org,
+      integration,
+      date,
+      false,
+      publicApiProfileId
+    );
   }
 
   @Get('/analytics/post/:postId')
   async getPostAnalytics(
     @GetOrgFromRequest() org: Organization,
+    @GetPublicApiProfileId() publicApiProfileId: string | undefined,
     @Param('postId') postId: string,
     @Query('date') date: string
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    return this._postsService.checkPostAnalytics(org.id, postId, +date);
+    // Mesma regra do app: post de outro perfil devolve lista vazia.
+    return this._postsService.checkPostAnalytics(
+      org.id,
+      postId,
+      +date,
+      false,
+      publicApiProfileId
+    );
   }
 
   @Post('/integration-trigger/:id')

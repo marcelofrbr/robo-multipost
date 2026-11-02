@@ -12,6 +12,45 @@ import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.ab
 import { FacebookDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/facebook.dto';
 import { DribbbleDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/dribbble.dto';
 import { Integration } from '@prisma/client';
+import {
+  AnalyticsWindow,
+  analyticsWindows,
+  buildMetric,
+  fetchMetaInsights,
+  metaSeries,
+  sumSeries,
+} from '@gitroom/nestjs-libraries/integrations/social/analytics.helper';
+
+/** Metricas diarias de Pagina vigentes (substitutas das page_impressions*). */
+const FACEBOOK_PAGE_METRICS = [
+  'page_media_view',
+  'page_total_media_view_unique',
+  'page_post_engagements',
+  'page_daily_follows_unique',
+  'page_video_views',
+];
+
+const FACEBOOK_PAGE_LABELS: Record<string, string> = {
+  page_media_view: 'Views',
+  page_total_media_view_unique: 'Daily Reach (avg)',
+  page_post_engagements: 'Posts Engagement',
+  page_daily_follows_unique: 'New Followers',
+  page_video_views: 'Videos views',
+};
+
+const FACEBOOK_POST_METRICS = [
+  'post_media_view',
+  'post_total_media_view_unique',
+  'post_reactions_by_type_total',
+  'post_clicks',
+];
+
+const FACEBOOK_POST_LABELS: Record<string, string> = {
+  post_media_view: 'Views',
+  post_total_media_view_unique: 'Reach',
+  post_reactions_by_type_total: 'Reactions',
+  post_clicks: 'Clicks',
+};
 
 // Aborta a chamada Graph API se passar de `timeoutMs` ms. Evita que uma
 // chamada lenta a graph.facebook.com (comum em agencias com muitas pages
@@ -625,41 +664,81 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
     ];
   }
 
+  /**
+   * Metricas da Pagina. A Meta desativou page_impressions* (2025); estas sao
+   * as substitutas. Contagens diarias sao somadas; o alcance unico diario vira
+   * media por dia (somar contaria a mesma pessoa varias vezes).
+   * Ver docs/architecture/analytics-metricas.md.
+   */
   async analytics(
     id: string,
     accessToken: string,
     date: number
   ): Promise<AnalyticsData[]> {
-    const until = dayjs().endOf('day').unix();
-    const since = dayjs().subtract(date, 'day').unix();
+    try {
+      const { current, previous } = analyticsWindows(date);
+      const base = `https://graph.facebook.com/v25.0/${id}`;
+      const url = (w: AnalyticsWindow) => (metrics: string) =>
+        `${base}/insights?metric=${metrics}&period=day&since=${w.since}&until=${w.until}&access_token=${accessToken}`;
 
-    const { data } = await (
-      await fetch(
-        `https://graph.facebook.com/v20.0/${id}/insights?metric=page_impressions_unique,page_posts_impressions_unique,page_post_engagements,page_daily_follows,page_video_views&access_token=${accessToken}&period=day&since=${since}&until=${until}`
-      )
-    ).json();
+      const [cur, prev, page] = await Promise.all([
+        fetchMetaInsights(url(current), FACEBOOK_PAGE_METRICS),
+        fetchMetaInsights(url(previous), FACEBOOK_PAGE_METRICS),
+        this.readPageCounts(base, accessToken),
+      ]);
 
-    return (
-      data?.map((d: any) => ({
-        label:
-          d.name === 'page_impressions_unique'
-            ? 'Page Impressions'
-            : d.name === 'page_post_engagements'
-            ? 'Posts Engagement'
-            : d.name === 'page_daily_follows'
-            ? 'Page followers'
-            : d.name === 'page_video_views'
-            ? 'Videos views'
-            : 'Posts Impressions',
-        percentageChange: 5,
-        data: d?.values?.map((v: any) => ({
-          total: v.value,
-          date: dayjs(v.end_time).format('YYYY-MM-DD'),
-        })),
-      })) || []
-    );
+      const result: AnalyticsData[] = [];
+      for (const metric of FACEBOOK_PAGE_METRICS) {
+        if (!cur[metric]) continue;
+        const series = metaSeries(cur[metric]);
+        const before = metaSeries(prev[metric]);
+        const isUnique = metric === 'page_total_media_view_unique';
+        const average = (s: AnalyticsData['data']) =>
+          s.length ? Math.round(sumSeries(s) / s.length) : undefined;
+
+        result.push(
+          buildMetric({
+            label: FACEBOOK_PAGE_LABELS[metric],
+            current: isUnique ? average(series) ?? 0 : sumSeries(series),
+            previous: prev[metric]
+              ? isUnique
+                ? average(before)
+                : sumSeries(before)
+              : undefined,
+            series,
+          })
+        );
+      }
+
+      const followers = page?.followers_count ?? page?.fan_count;
+      if (typeof followers === 'number') {
+        result.push(
+          buildMetric({ label: 'Followers', current: followers, kind: 'snapshot' })
+        );
+      }
+
+      return result;
+    } catch (err) {
+      console.error('Error fetching Facebook analytics:', (err as Error)?.message || 'unknown error');
+      return [];
+    }
   }
 
+  private async readPageCounts(
+    base: string,
+    accessToken: string
+  ): Promise<{ followers_count?: number; fan_count?: number } | null> {
+    try {
+      const body = await (
+        await fetch(`${base}?fields=followers_count,fan_count&access_token=${accessToken}`)
+      ).json();
+      return body?.error ? null : body;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Metricas de um post (acumuladas desde a publicacao); `date` nao se aplica. */
   async postAnalytics(
     integrationId: string,
     accessToken: string,
@@ -667,71 +746,43 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
     date: number
   ): Promise<AnalyticsData[]> {
     const today = dayjs().format('YYYY-MM-DD');
+    // O post salvo pode ter so o id da foto/video; as metricas ficam na
+    // publicacao da pagina (`<pagina>_<post>`). Validado com conta real.
+    const insightsId = postId.includes('_')
+      ? postId
+      : `${integrationId}_${postId}`;
 
     try {
-      // Fetch post insights from Facebook Graph API
-      const { data } = await (
-        await this.fetch(
-          `https://graph.facebook.com/v20.0/${postId}/insights?metric=post_impressions_unique,post_reactions_by_type_total,post_clicks,post_clicks_by_type&access_token=${accessToken}`
-        )
-      ).json();
-
-      if (!data || data.length === 0) {
-        return [];
-      }
+      const data = await fetchMetaInsights(
+        (m) =>
+          `https://graph.facebook.com/v25.0/${insightsId}/insights?metric=${m}&access_token=${accessToken}`,
+        FACEBOOK_POST_METRICS
+      );
 
       const result: AnalyticsData[] = [];
-
-      for (const metric of data) {
-        const value = metric.values?.[0]?.value;
-        if (value === undefined) continue;
-
-        let label = '';
-        let total = '';
-
-        switch (metric.name) {
-          case 'post_impressions_unique':
-            label = 'Impressions';
-            total = String(value);
-            break;
-          case 'post_clicks':
-            label = 'Clicks';
-            total = String(value);
-            break;
-          case 'post_clicks_by_type':
-            // This returns an object with click types
-            if (typeof value === 'object') {
-              const totalClicks = Object.values(
-                value as Record<string, number>
-              ).reduce((sum: number, v: number) => sum + v, 0);
-              label = 'Clicks by Type';
-              total = String(totalClicks);
-            }
-            break;
-          case 'post_reactions_by_type_total':
-            // This returns an object with reaction types
-            if (typeof value === 'object') {
-              const totalReactions = Object.values(
-                value as Record<string, number>
-              ).reduce((sum: number, v: number) => sum + v, 0);
-              label = 'Reactions';
-              total = String(totalReactions);
-            }
-            break;
-        }
-
-        if (label) {
-          result.push({
-            label,
-            percentageChange: 0,
-            data: [{ total, date: today }],
-          });
-        }
+      for (const metric of FACEBOOK_POST_METRICS) {
+        const raw = data[metric]?.values?.[0]?.value;
+        const value =
+          raw && typeof raw === 'object'
+            ? Object.values(raw as Record<string, number>).reduce(
+                (sum: number, v) => sum + (Number(v) || 0),
+                0
+              )
+            : raw;
+        if (typeof value !== 'number') continue;
+        result.push(
+          buildMetric({
+            label: FACEBOOK_POST_LABELS[metric],
+            current: value,
+            kind: 'lifetime',
+            date: today,
+          })
+        );
       }
 
       return result;
     } catch (err) {
-      console.error('Error fetching Facebook post analytics:', err);
+      console.error('Error fetching Facebook post analytics:', (err as Error)?.message || 'unknown error');
       return [];
     }
   }

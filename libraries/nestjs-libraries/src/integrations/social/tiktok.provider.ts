@@ -707,33 +707,40 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
             totalShares += video.share_count || 0;
           }
 
+          // A API basica do TikTok nao filtra por data: estes sao os totais
+          // acumulados dos ultimos 20 videos, e o rotulo diz isso.
           result.push({
-            label: 'Views',
+            label: 'Views (last 20 videos)',
             percentageChange: 0,
             data: [{ total: String(totalViews), date: today }],
           });
 
           result.push({
-            label: 'Recent Likes',
+            label: 'Likes (last 20 videos)',
             percentageChange: 0,
             data: [{ total: String(totalLikes), date: today }],
           });
 
           result.push({
-            label: 'Recent Comments',
+            label: 'Comments (last 20 videos)',
             percentageChange: 0,
             data: [{ total: String(totalComments), date: today }],
           });
 
           result.push({
-            label: 'Recent Shares',
+            label: 'Shares (last 20 videos)',
             percentageChange: 0,
             data: [{ total: String(totalShares), date: today }],
           });
         }
       }
 
-      return result;
+      // Tudo aqui e valor atual da conta (independe do periodo escolhido).
+      return result.map((metric) => ({
+        ...metric,
+        summary: Number(metric.data[0]?.total) || 0,
+        kind: 'snapshot' as const,
+      }));
     } catch (err) {
       console.error('Error fetching TikTok analytics:', err);
       return [];

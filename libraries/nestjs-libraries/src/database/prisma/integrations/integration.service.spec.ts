@@ -84,3 +84,100 @@ describe('IntegrationService.createAuthUrl (OAuth pela API/MCP)', () => {
     await expect(buildWithManager(makeManager(['instagram'], true)).createAuthUrl('org-1', 'instagram', {})).rejects.toMatchObject({ status: 400 });
   });
 });
+
+describe('IntegrationService.checkAnalytics (metricas)', () => {
+  const { RefreshToken } = jest.requireActual(
+    '@gitroom/nestjs-libraries/integrations/social.abstract'
+  );
+
+  const setup = (analytics: jest.Mock, profileId: string | null = null) => {
+    const repo = createMock<IntegrationRepository>();
+    repo.getIntegrationById.mockResolvedValue({
+      id: 'int-1',
+      type: 'social',
+      profileId,
+      internalId: 'ig-1',
+      token: 'TOK',
+      providerIdentifier: 'instagram',
+      tokenExpiration: new Date(Date.now() + 86400000),
+    } as any);
+    const manager = { getSocialIntegration: () => ({ analytics }) };
+    const refresh = { refresh: jest.fn().mockResolvedValue({ accessToken: 'NEW' }) };
+    const service = new IntegrationService(
+      repo, null as any, manager as any, null as any, refresh as any, null as any
+    );
+    return { service, refresh };
+  };
+
+  beforeEach(() => {
+    (ioRedis.get as jest.Mock).mockReset().mockResolvedValue(null);
+    (ioRedis.set as jest.Mock).mockReset();
+  });
+
+  it('deve guardar em cache temporario com chave versionada quando ha metricas', async () => {
+    const metrics = [{ label: 'Reach', data: [] as any[], percentageChange: 0 }];
+    const { service } = setup(jest.fn().mockResolvedValue(metrics));
+
+    await expect(
+      service.checkAnalytics({ id: 'org-1' } as any, 'int-1', '7')
+    ).resolves.toEqual(metrics);
+    expect(ioRedis.get).toHaveBeenCalledWith('integration:v2:org-1:int-1:7');
+    expect((ioRedis.set as jest.Mock).mock.calls[0][0]).toBe(
+      'integration:v2:org-1:int-1:7'
+    );
+  });
+
+  it('nao deve guardar em cache uma resposta vazia (falha passageira)', async () => {
+    const { service } = setup(jest.fn().mockResolvedValue([]));
+
+    await service.checkAnalytics({ id: 'org-1' } as any, 'int-1', '7');
+
+    expect(ioRedis.set).not.toHaveBeenCalled();
+  });
+
+  it('deve tentar o refresh de token uma unica vez, sem laco', async () => {
+    const analytics = jest.fn().mockRejectedValue(new RefreshToken('x', '{}', {} as any));
+    const { service, refresh } = setup(analytics);
+
+    await expect(
+      service.checkAnalytics({ id: 'org-1' } as any, 'int-1', '7')
+    ).resolves.toEqual([]);
+    expect(analytics).toHaveBeenCalledTimes(2);
+    expect(refresh.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('deve manter o perfil na nova tentativa apos o refresh', async () => {
+    const analytics = jest.fn().mockRejectedValue(new RefreshToken('x', '{}', {} as any));
+    const { service } = setup(analytics, 'prof-outro');
+
+    await expect(
+      service.checkAnalytics({ id: 'org-1' } as any, 'int-1', '7', false, 'prof-1')
+    ).rejects.toThrow('Integration does not belong to this profile');
+    expect(analytics).not.toHaveBeenCalled();
+  });
+});
+
+describe('IntegrationService.checkAnalytics (periodo vindo da URL)', () => {
+  it('deve normalizar dias invalidos para 7 antes de montar a chave de cache', async () => {
+    (ioRedis.get as jest.Mock).mockReset().mockResolvedValue(null);
+    (ioRedis.set as jest.Mock).mockReset();
+    const repo = createMock<IntegrationRepository>();
+    repo.getIntegrationById.mockResolvedValue({
+      id: 'int-1', type: 'social', profileId: null, internalId: 'ig-1', token: 'TOK',
+      providerIdentifier: 'instagram', tokenExpiration: new Date(Date.now() + 86400000),
+    } as any);
+    const analytics = jest.fn().mockResolvedValue([{ label: 'Reach', data: [] as any[], percentageChange: 0 }]);
+    const service = new IntegrationService(
+      repo, null as any, { getSocialIntegration: () => ({ analytics }) } as any, null as any, null as any, null as any
+    );
+
+    await service.checkAnalytics({ id: 'org-1' } as any, 'int-1', 'abc');
+    await service.checkAnalytics({ id: 'org-1' } as any, 'int-1', '30.7');
+
+    expect((ioRedis.get as jest.Mock).mock.calls.map((c) => c[0])).toEqual([
+      'integration:v2:org-1:int-1:7',
+      'integration:v2:org-1:int-1:30',
+    ]);
+    expect(analytics.mock.calls.map((c) => c[2])).toEqual([7, 30]);
+  });
+});

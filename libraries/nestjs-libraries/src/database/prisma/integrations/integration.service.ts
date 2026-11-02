@@ -468,6 +468,11 @@ export class IntegrationService {
     forceRefresh = false,
     profileId?: string
   ): Promise<AnalyticsData[]> {
+    // Periodo vem da query string: inteiro de 1 a 365 (padrao 7), para nao
+    // gerar chaves de cache e chamadas a rede social extras.
+    const parsedDays = Math.floor(Number(date));
+    date = String(parsedDays >= 1 && parsedDays <= 365 ? parsedDays : 7);
+
     const getIntegration = await this.getIntegrationById(org.id, integration);
 
     if (!getIntegration) {
@@ -511,9 +516,10 @@ export class IntegrationService {
       }
     }
 
-    const getIntegrationData = await ioRedis.get(
-      `integration:${org.id}:${integration}:${date}`
-    );
+    // Cache temporario (sem banco). 'v2' = formato de AnalyticsData com
+    // summary/previous; ver docs/architecture/analytics-metricas.md.
+    const cacheKey = `integration:v2:${org.id}:${integration}:${date}`;
+    const getIntegrationData = await ioRedis.get(cacheKey);
     if (getIntegrationData) {
       return JSON.parse(getIntegrationData);
     }
@@ -526,19 +532,27 @@ export class IntegrationService {
           +date,
           getIntegration
         );
-        await ioRedis.set(
-          `integration:${org.id}:${integration}:${date}`,
-          JSON.stringify(loadAnalytics),
-          'EX',
-          !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
-            ? 1
-            : 3600
-        );
+        // Resposta vazia costuma ser falha passageira: nao prende no cache.
+        if (Array.isArray(loadAnalytics) && loadAnalytics.length) {
+          await ioRedis.set(
+            cacheKey,
+            JSON.stringify(loadAnalytics),
+            'EX',
+            !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
+              ? 1
+              : 3600
+          );
+        }
         return loadAnalytics;
       } catch (e) {
-        if (e instanceof RefreshToken) {
-          return this.checkAnalytics(org, integration, date, true);
+        // Uma unica nova tentativa apos o refresh (sem laco infinito).
+        if (e instanceof RefreshToken && !forceRefresh) {
+          return this.checkAnalytics(org, integration, date, true, profileId);
         }
+        console.error(
+          `Analytics failed for integration ${integration}:`,
+          (e as Error)?.message || e
+        );
       }
     }
 

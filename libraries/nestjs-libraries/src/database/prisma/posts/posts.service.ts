@@ -168,6 +168,10 @@ export class PostsService {
     forceRefresh = false,
     profileId?: string
   ): Promise<AnalyticsData[] | { missing: true }> {
+    // Periodo vem da query string: inteiro de 1 a 365 (padrao 7).
+    const parsedDays = Math.floor(Number(date));
+    date = parsedDays >= 1 && parsedDays <= 365 ? parsedDays : 7;
+
     const post = await this._postRepository.getPostById(postId, orgId);
     if (!post || !post.releaseId) {
       return [];
@@ -231,20 +235,27 @@ export class PostsService {
         date,
         getIntegration
       );
-      await ioRedis.set(
-        `integration:${orgId}:${post.id}:${date}`,
-        JSON.stringify(loadAnalytics),
-        'EX',
-        !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
-          ? 1
-          : 3600
-      );
+      // Cache temporario; resposta vazia (falha passageira) nao e guardada.
+      if (Array.isArray(loadAnalytics) && loadAnalytics.length) {
+        await ioRedis.set(
+          `integration:v2:${orgId}:${post.id}:${date}`,
+          JSON.stringify(loadAnalytics),
+          'EX',
+          !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
+            ? 1
+            : 3600
+        );
+      }
       return loadAnalytics;
     } catch (e) {
-      console.log(e);
-      if (e instanceof RefreshToken) {
+      // Uma unica nova tentativa apos o refresh (sem laco infinito).
+      if (e instanceof RefreshToken && !forceRefresh) {
         return this.checkPostAnalytics(orgId, postId, date, true, profileId);
       }
+      console.error(
+        `Post analytics failed for post ${postId}:`,
+        (e as Error)?.message || e
+      );
     }
 
     return [];

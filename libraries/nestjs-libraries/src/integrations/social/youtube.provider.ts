@@ -20,6 +20,24 @@ import dayjs from 'dayjs';
 import { GaxiosResponse } from 'gaxios/build/src/common';
 import Schema$Video = youtube_v3.Schema$Video;
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
+import {
+  buildMetric,
+  sumSeries,
+} from '@gitroom/nestjs-libraries/integrations/social/analytics.helper';
+import { AnalyticsUnit } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
+
+/** Metricas do canal (YouTube Analytics API v2), na ordem exibida. */
+const YOUTUBE_METRICS: { key: string; label: string; unit: AnalyticsUnit }[] = [
+  { key: 'views', label: 'Views', unit: 'count' },
+  { key: 'estimatedMinutesWatched', label: 'Estimated Minutes Watched', unit: 'count' },
+  { key: 'averageViewDuration', label: 'Average View Duration', unit: 'seconds' },
+  { key: 'averageViewPercentage', label: 'Average View Percentage', unit: 'percent' },
+  { key: 'subscribersGained', label: 'Subscribers Gained', unit: 'count' },
+  { key: 'subscribersLost', label: 'Subscribers Lost', unit: 'count' },
+  { key: 'likes', label: 'Likes', unit: 'count' },
+  { key: 'comments', label: 'Comments', unit: 'count' },
+  { key: 'shares', label: 'Shares', unit: 'count' },
+];
 
 const clientAndYoutube = (clientInformation?: ClientInformation) => {
   const client = new google.auth.OAuth2({
@@ -406,86 +424,82 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
     accessToken: string,
     date: number
   ): Promise<AnalyticsData[]> {
+    // Serie diaria + totais do periodo calculados pelo proprio YouTube (medias
+    // ponderadas corretas) + totais do periodo anterior para a variacao.
+    // O YouTube costuma atrasar 2 a 3 dias. Ver docs/architecture/analytics-metricas.md.
     try {
-      const endDate = dayjs().format('YYYY-MM-DD');
-      const startDate = dayjs().subtract(date, 'day').format('YYYY-MM-DD');
+      const days = Number.isFinite(date) && date > 0 ? Math.floor(date) : 7;
+      const today = dayjs();
+      const fmt = (d: dayjs.Dayjs) => d.format('YYYY-MM-DD');
+      const current = {
+        startDate: fmt(today.subtract(days - 1, 'day')),
+        endDate: fmt(today),
+      };
+      const previous = {
+        startDate: fmt(today.subtract(days * 2 - 1, 'day')),
+        endDate: fmt(today.subtract(days, 'day')),
+      };
 
       const { client, youtubeAnalytics } = clientAndYoutube();
       client.setCredentials({ access_token: accessToken });
-
       const youtubeClient = youtubeAnalytics(client);
-      const { data } = await youtubeClient.reports.query({
-        ids: 'channel==MINE',
-        startDate,
-        endDate,
-        metrics:
-          'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,likes,subscribersLost',
-        dimensions: 'day',
-        sort: 'day',
-      });
+      const metrics = YOUTUBE_METRICS.map((m) => m.key).join(',');
 
-      const columns = data?.columnHeaders?.map((p) => p.name)!;
-      const mappedData = data?.rows?.map((p) => {
-        return columns.reduce((acc, curr, index) => {
-          acc[curr!] = p[index];
-          return acc;
-        }, {} as any);
-      });
+      const toRows = (data: any): any[] => {
+        const columns: string[] =
+          data?.columnHeaders?.map((p: any) => p.name) || [];
+        return (data?.rows || []).map((row: any[]) =>
+          columns.reduce((acc, name, index) => {
+            acc[name] = row[index];
+            return acc;
+          }, {} as Record<string, any>)
+        );
+      };
 
-      const acc = [] as any[];
-      acc.push({
-        label: 'Estimated Minutes Watched',
-        data: mappedData?.map((p: any) => ({
-          total: p.estimatedMinutesWatched,
-          date: p.day,
-        })),
-      });
+      const [daily, totals, before] = await Promise.all([
+        youtubeClient.reports.query({
+          ids: 'channel==MINE',
+          ...current,
+          metrics,
+          dimensions: 'day',
+          sort: 'day',
+        }),
+        youtubeClient.reports
+          .query({ ids: 'channel==MINE', ...current, metrics })
+          .catch((): null => null),
+        youtubeClient.reports
+          .query({ ids: 'channel==MINE', ...previous, metrics })
+          .catch((): null => null),
+      ]);
 
-      acc.push({
-        label: 'Average View Duration',
-        average: true,
-        data: mappedData?.map((p: any) => ({
-          total: p.averageViewDuration,
-          date: p.day,
-        })),
-      });
+      const dailyRows = toRows(daily?.data);
+      const totalRow = toRows(totals?.data)[0];
+      const previousRow = toRows(before?.data)[0];
 
-      acc.push({
-        label: 'Average View Percentage',
-        average: true,
-        data: mappedData?.map((p: any) => ({
-          total: p.averageViewPercentage,
-          date: p.day,
-        })),
+      return YOUTUBE_METRICS.map((metric) => {
+        const series = dailyRows.map((row) => ({
+          total: String(Number(row[metric.key]) || 0),
+          date: row.day,
+        }));
+        const fallback = series.length
+          ? sumSeries(series) / (metric.unit === 'count' ? 1 : series.length)
+          : 0;
+        const round = (n: number) => Math.round(n * 100) / 100;
+        const value = round(Number(totalRow?.[metric.key]));
+        const prev = round(Number(previousRow?.[metric.key]));
+        return buildMetric({
+          label: metric.label,
+          current: totalRow && Number.isFinite(value)
+            ? value
+            : Math.round(fallback * 100) / 100,
+          previous:
+            totalRow && previousRow && Number.isFinite(prev) ? prev : undefined,
+          unit: metric.unit,
+          series,
+        });
       });
-
-      acc.push({
-        label: 'Subscribers Gained',
-        data: mappedData?.map((p: any) => ({
-          total: p.subscribersGained,
-          date: p.day,
-        })),
-      });
-
-      acc.push({
-        label: 'Subscribers Lost',
-        data: mappedData?.map((p: any) => ({
-          total: p.subscribersLost,
-          date: p.day,
-        })),
-      });
-
-      acc.push({
-        label: 'Likes',
-        data: mappedData?.map((p: any) => ({
-          total: p.likes,
-          date: p.day,
-        })),
-      });
-
-      return acc;
     } catch (err) {
-      console.error('Error fetching YouTube analytics:', err);
+      console.error('Error fetching YouTube analytics:', (err as Error)?.message || 'unknown error');
       return [];
     }
   }
@@ -552,7 +566,7 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
 
       return result;
     } catch (err) {
-      console.error('Error fetching YouTube post analytics:', err);
+      console.error('Error fetching YouTube post analytics:', (err as Error)?.message || 'unknown error');
       return [];
     }
   }

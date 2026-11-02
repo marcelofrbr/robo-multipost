@@ -372,3 +372,63 @@ describe('PublicIntegrationsController - canais e escopo de perfil em posts (ent
     expect(postsService.deletePost).toHaveBeenLastCalledWith('org-1', 'g1', 'prof-1');
   });
 });
+
+describe('PublicIntegrationsController - analytics (escopo de perfil)', () => {
+  const build = () => {
+    const integrationService = {
+      getIntegrationInScope: jest.fn().mockResolvedValue({ id: 'int-1' }),
+      checkAnalytics: jest.fn().mockResolvedValue([{ label: 'Reach' }]),
+    };
+    const postsService = {
+      checkPostAnalytics: jest.fn().mockResolvedValue([{ label: 'Views' }]),
+    };
+    const controller = new PublicIntegrationsController(
+      integrationService as any,
+      postsService as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      makeScope() as any
+    );
+    return { controller, integrationService, postsService };
+  };
+
+  it('canal: confere o escopo do perfil da chave antes de buscar as metricas', async () => {
+    const { controller, integrationService } = build();
+
+    await controller.getAnalytics({ id: 'org-1' } as any, 'prof-1', 'int-1', '7');
+
+    expect(integrationService.getIntegrationInScope).toHaveBeenCalledWith('org-1', 'int-1', 'prof-1');
+    expect(integrationService.checkAnalytics).toHaveBeenCalledWith(
+      { id: 'org-1' }, 'int-1', '7', false, 'prof-1'
+    );
+  });
+
+  it('canal de outro perfil: 403 sem chamar a rede social', async () => {
+    const { controller, integrationService } = build();
+    integrationService.getIntegrationInScope.mockRejectedValue(new HttpException('forbidden', 403));
+
+    await expect(
+      controller.getAnalytics({ id: 'org-1' } as any, 'prof-1', 'int-1', '7')
+    ).rejects.toBeInstanceOf(HttpException);
+    expect(integrationService.checkAnalytics).not.toHaveBeenCalled();
+  });
+
+  it('chave de org: continua funcionando sem perfil', async () => {
+    const { controller, integrationService } = build();
+
+    await controller.getAnalytics({ id: 'org-1' } as any, undefined, 'int-1', '7');
+
+    expect(integrationService.getIntegrationInScope).toHaveBeenCalledWith('org-1', 'int-1', undefined);
+    expect(integrationService.checkAnalytics).toHaveBeenCalled();
+  });
+
+  it('post: repassa o perfil da chave para a regra de escopo do service', async () => {
+    const { controller, postsService } = build();
+
+    await controller.getPostAnalytics({ id: 'org-1' } as any, 'prof-1', 'post-1', '30');
+
+    expect(postsService.checkPostAnalytics).toHaveBeenCalledWith('org-1', 'post-1', 30, false, 'prof-1');
+  });
+});

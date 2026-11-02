@@ -14,6 +14,107 @@ import { InstagramDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-set
 import { Integration } from '@prisma/client';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { InstagramDmButton } from '@gitroom/nestjs-libraries/integrations/social/instagram-dm-button.type';
+import {
+  AnalyticsWindow,
+  analyticsWindows,
+  buildMetric,
+  fetchMetaInsights,
+  metaSeries,
+  metaTotalValue,
+} from '@gitroom/nestjs-libraries/integrations/social/analytics.helper';
+
+/** Metricas de conta com `metric_type=total_value` (valor oficial do periodo). */
+const INSTAGRAM_PERIOD_METRICS = [
+  'views',
+  'reach',
+  'accounts_engaged',
+  'total_interactions',
+  'likes',
+  'comments',
+  'shares',
+  'saves',
+  'replies',
+  'profile_links_taps',
+];
+
+const INSTAGRAM_LABELS: Record<string, string> = {
+  views: 'Views',
+  reach: 'Reach',
+  accounts_engaged: 'Accounts Engaged',
+  total_interactions: 'Interactions',
+  likes: 'Likes',
+  comments: 'Comments',
+  shares: 'Shares',
+  saves: 'Saves',
+  replies: 'Replies',
+  profile_links_taps: 'Profile Link Taps',
+};
+
+/** Metricas de post por `media_product_type`; LEGACY = lista anterior (fallback). */
+const INSTAGRAM_POST_METRICS: Record<string, string[]> = {
+  FEED: [
+    'views',
+    'reach',
+    'likes',
+    'comments',
+    'shares',
+    'saved',
+    'total_interactions',
+    'profile_visits',
+    'follows',
+  ],
+  REELS: [
+    'views',
+    'reach',
+    'likes',
+    'comments',
+    'shares',
+    'saved',
+    'total_interactions',
+    'ig_reels_avg_watch_time',
+    'ig_reels_video_view_total_time',
+  ],
+  STORY: [
+    'views',
+    'reach',
+    'replies',
+    'shares',
+    'total_interactions',
+    'follows',
+    'profile_visits',
+  ],
+  LEGACY: ['views', 'reach', 'saved', 'likes', 'comments', 'shares'],
+};
+
+const INSTAGRAM_POST_LABELS: Record<string, string> = {
+  views: 'Views',
+  reach: 'Reach',
+  likes: 'Likes',
+  comments: 'Comments',
+  shares: 'Shares',
+  saved: 'Saves',
+  replies: 'Replies',
+  total_interactions: 'Interactions',
+  profile_visits: 'Profile Visits',
+  follows: 'New Followers',
+  ig_reels_avg_watch_time: 'Average Watch Time',
+  ig_reels_video_view_total_time: 'Total Watch Time',
+};
+
+/** follows_and_unfollows com breakdown follow_type: FOLLOWER = seguiu, NON_FOLLOWER = deixou de seguir. */
+const followBreakdown = (
+  item: any
+): { follows?: number; unfollows?: number } => {
+  const results: any[] = item?.total_value?.breakdowns?.[0]?.results || [];
+  if (!results.length) {
+    return {};
+  }
+  const pick = (dim: string) => {
+    const found = results.find((r) => r?.dimension_values?.[0] === dim);
+    return typeof found?.value === 'number' ? found.value : 0;
+  };
+  return { follows: pick('FOLLOWER'), unfollows: pick('NON_FOLLOWER') };
+};
 
 // Aborta a chamada Graph API se passar de `timeoutMs` ms. Evita que uma
 // chamada lenta a graph.facebook.com (comum em agencias com muitas pages
@@ -874,48 +975,11 @@ export class InstagramProvider
     ];
   }
 
-  private setTitle(name: string) {
-    switch (name) {
-      case 'likes': {
-        return 'Likes';
-      }
-
-      case 'followers': {
-        return 'Followers';
-      }
-
-      case 'reach': {
-        return 'Reach';
-      }
-
-      case 'follower_count': {
-        return 'Follower Count';
-      }
-
-      case 'views': {
-        return 'Views';
-      }
-
-      case 'comments': {
-        return 'Comments';
-      }
-
-      case 'shares': {
-        return 'Shares';
-      }
-
-      case 'saves': {
-        return 'Saves';
-      }
-
-      case 'replies': {
-        return 'Replies';
-      }
-    }
-
-    return '';
-  }
-
+  /**
+   * Metricas da conta. Valores do periodo vem prontos da Meta
+   * (`metric_type=total_value`), sem somar dias; a variacao compara com o
+   * periodo anterior de mesmo tamanho. Ver docs/architecture/analytics-metricas.md.
+   */
   async analytics(
     id: string,
     accessToken: string,
@@ -923,51 +987,99 @@ export class InstagramProvider
     integration?: Integration,
     type = 'graph.facebook.com'
   ): Promise<AnalyticsData[]> {
-    const until = dayjs().endOf('day').unix();
-    const since = dayjs().subtract(date, 'day').unix();
+    try {
+      const { current, previous } = analyticsWindows(date);
+      const base = `https://${type}/v25.0/${id}`;
+      const totalsUrl = (w: AnalyticsWindow) => (metrics: string) =>
+        `${base}/insights?metric=${metrics}&metric_type=total_value&period=day&since=${w.since}&until=${w.until}&access_token=${accessToken}`;
 
-    const { data, ...all } = await (
-      await fetch(
-        `https://${type}/v21.0/${id}/insights?metric=follower_count,reach&access_token=${accessToken}&period=day&since=${since}&until=${until}`
-      )
-    ).json();
+      const [cur, prev, series, followsCur, followsPrev, profile] =
+        await Promise.all([
+          fetchMetaInsights(totalsUrl(current), INSTAGRAM_PERIOD_METRICS),
+          fetchMetaInsights(totalsUrl(previous), INSTAGRAM_PERIOD_METRICS),
+          fetchMetaInsights(
+            (metrics) =>
+              `${base}/insights?metric=${metrics}&period=day&since=${current.since}&until=${current.until}&access_token=${accessToken}`,
+            ['reach']
+          ),
+          fetchMetaInsights(
+            (metrics) => `${totalsUrl(current)(metrics)}&breakdown=follow_type`,
+            ['follows_and_unfollows']
+          ),
+          fetchMetaInsights(
+            (metrics) => `${totalsUrl(previous)(metrics)}&breakdown=follow_type`,
+            ['follows_and_unfollows']
+          ),
+          this.readAccountCounts(base, accessToken),
+        ]);
 
-    const { data: data2, ...all2 } = await (
-      await fetch(
-        `https://${type}/v21.0/${id}/insights?metric_type=total_value&metric=likes,views,comments,shares,saves,replies&access_token=${accessToken}&period=day&since=${since}&until=${until}`
-      )
-    ).json();
-    const analytics = [];
+      const result: AnalyticsData[] = [];
 
-    analytics.push(
-      ...(data?.map((d: any) => ({
-        label: this.setTitle(d.name),
-        percentageChange: 5,
-        data: d.values.map((v: any) => ({
-          total: v.value,
-          date: dayjs(v.end_time).format('YYYY-MM-DD'),
-        })),
-      })) || [])
-    );
+      for (const metric of INSTAGRAM_PERIOD_METRICS) {
+        const value = metaTotalValue(cur[metric]);
+        if (value === undefined) continue;
+        result.push(
+          buildMetric({
+            label: INSTAGRAM_LABELS[metric],
+            current: value,
+            previous: metaTotalValue(prev[metric]),
+            series: metric === 'reach' ? metaSeries(series.reach) : undefined,
+          })
+        );
+      }
 
-    analytics.push(
-      ...data2.map((d: any) => ({
-        label: this.setTitle(d.name),
-        percentageChange: 5,
-        data: [
-          {
-            total: d.total_value.value,
-            date: dayjs().format('YYYY-MM-DD'),
-          },
-          {
-            total: d.total_value.value,
-            date: dayjs().add(1, 'day').format('YYYY-MM-DD'),
-          },
-        ],
-      }))
-    );
+      const follows = followBreakdown(followsCur.follows_and_unfollows);
+      const followsBefore = followBreakdown(followsPrev.follows_and_unfollows);
+      if (follows.follows !== undefined) {
+        result.push(
+          buildMetric({
+            label: 'New Followers',
+            current: follows.follows,
+            previous: followsBefore.follows,
+          })
+        );
+      }
+      if (follows.unfollows !== undefined) {
+        result.push(
+          buildMetric({
+            label: 'Unfollows',
+            current: follows.unfollows,
+            previous: followsBefore.unfollows,
+          })
+        );
+      }
 
-    return analytics;
+      if (typeof profile?.followers_count === 'number') {
+        result.push(
+          buildMetric({
+            label: 'Followers',
+            current: profile.followers_count,
+            kind: 'snapshot',
+          })
+        );
+      }
+
+      return result;
+    } catch (err) {
+      console.error('Error fetching Instagram analytics:', (err as Error)?.message || 'unknown error');
+      return [];
+    }
+  }
+
+  private async readAccountCounts(
+    base: string,
+    accessToken: string
+  ): Promise<{ followers_count?: number; media_count?: number } | null> {
+    try {
+      const body = await (
+        await fetch(
+          `${base}?fields=followers_count,media_count&access_token=${accessToken}`
+        )
+      ).json();
+      return body?.error ? null : body;
+    } catch {
+      return null;
+    }
   }
 
   music(accessToken: string, data: { q: string }) {
@@ -978,6 +1090,11 @@ export class InstagramProvider
     );
   }
 
+  /**
+   * Metricas de um post (valores acumulados desde a publicacao). A lista de
+   * metricas depende do tipo de midia (FEED, REELS, STORY); sem conseguir ler
+   * o tipo, usa a lista antiga. `date` nao se aplica (a Meta so da o total).
+   */
   async postAnalytics(
     integrationId: string,
     accessToken: string,
@@ -987,63 +1104,64 @@ export class InstagramProvider
     type = 'graph.facebook.com'
   ): Promise<AnalyticsData[]> {
     const today = dayjs().format('YYYY-MM-DD');
+    const base = `https://${type}/v25.0/${postId}`;
 
     try {
-      // Fetch media insights from Instagram Graph API
-      const { data } = await (
-        await this.fetch(
-          `https://${type}/v21.0/${postId}/insights?metric=views,reach,saved,likes,comments,shares&access_token=${accessToken}`
-        )
-      ).json();
-
-      if (!data || data.length === 0) {
-        return [];
+      let productType: string | undefined;
+      try {
+        const info = await (
+          await fetch(
+            `${base}?fields=media_product_type,media_type&access_token=${accessToken}`
+          )
+        ).json();
+        productType = info?.error ? undefined : info?.media_product_type;
+      } catch {
+        productType = undefined;
       }
 
+      const metrics =
+        INSTAGRAM_POST_METRICS[productType || ''] ||
+        INSTAGRAM_POST_METRICS.LEGACY;
+
+      const data = await fetchMetaInsights(
+        (m) => `${base}/insights?metric=${m}&access_token=${accessToken}`,
+        metrics
+      );
+
       const result: AnalyticsData[] = [];
+      for (const metric of metrics) {
+        const raw = metaTotalValue(data[metric]);
+        if (raw === undefined) continue;
+        const isTime = metric.startsWith('ig_reels_');
+        result.push(
+          buildMetric({
+            label: INSTAGRAM_POST_LABELS[metric],
+            // A Meta devolve o tempo dos reels em milissegundos.
+            current: isTime ? Math.round(raw / 100) / 10 : raw,
+            unit: isTime ? 'seconds' : 'count',
+            kind: 'lifetime',
+            date: today,
+          })
+        );
+      }
 
-      for (const metric of data) {
-        const value = metric.values?.[0]?.value;
-        if (value === undefined) continue;
-
-        let label = '';
-
-        switch (metric.name) {
-          case 'views':
-            label = 'Views';
-            break;
-          case 'reach':
-            label = 'Reach';
-            break;
-          case 'engagement':
-            label = 'Engagement';
-            break;
-          case 'saved':
-            label = 'Saves';
-            break;
-          case 'likes':
-            label = 'Likes';
-            break;
-          case 'comments':
-            label = 'Comments';
-            break;
-          case 'shares':
-            label = 'Shares';
-            break;
-        }
-
-        if (label) {
-          result.push({
-            label,
-            percentageChange: 0,
-            data: [{ total: String(value), date: today }],
-          });
-        }
+      const reach = metaTotalValue(data.reach);
+      const interactions = metaTotalValue(data.total_interactions);
+      if (reach && interactions !== undefined) {
+        result.push(
+          buildMetric({
+            label: 'Engagement Rate',
+            current: Math.round((interactions / reach) * 10000) / 100,
+            unit: 'percent',
+            kind: 'lifetime',
+            date: today,
+          })
+        );
       }
 
       return result;
     } catch (err) {
-      console.error('Error fetching Instagram post analytics:', err);
+      console.error('Error fetching Instagram post analytics:', (err as Error)?.message || 'unknown error');
       return [];
     }
   }

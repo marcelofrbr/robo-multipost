@@ -23,10 +23,16 @@ export class IntegrationAnalyticsTool implements AgentToolInterface {
       id: 'integrationAnalytics',
       description:
         'Metricas de um canal (seguidores, alcance, etc.) nos ultimos N dias, ' +
-        'como na tela de Analytics.',
+        'como na tela de Analytics. Cada metrica traz `summary` (valor oficial ' +
+        'do periodo), `previous` e `percentageChange` (vs. periodo anterior de ' +
+        'mesmo tamanho; 0 = sem comparacao), `unit` (count/percent/seconds) e ' +
+        '`kind` (period/snapshot/lifetime).',
       inputSchema: z.object({
         integrationId: z.string(),
-        days: z.string().optional().describe('7, 30 ou 90 (padrao 7)'),
+        days: z
+          .string()
+          .optional()
+          .describe('3, 7, 14, 30 ou 90 conforme a rede (padrao 7)'),
       }),
       outputSchema: z.object({ metrics: z.array(z.any()) }),
       execute: async (input: any) => {

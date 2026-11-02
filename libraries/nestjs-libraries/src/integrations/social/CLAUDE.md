@@ -109,6 +109,7 @@ The company fully rebranded Late/getlate.dev → Zernio (same company, new brand
 | `instagram-dm-button.type.ts` | Types for the follow-gate postback button |
 | `zernio.base.provider.ts` | Base for all Zernio providers (Redis cache, helpers) |
 | `x.provider.ts` + `x.provider.spec.ts` | X/Twitter — example of a tested provider |
+| `analytics.helper.ts` | Shared, never-throwing analytics helpers: `analyticsWindows` (current + previous equal-length window), `percentChange`, `buildMetric`, `fetchMetaInsights` (batch request, per-metric fallback when Meta rejects a deprecated/incompatible metric), `metaSeries`/`metaDayFromEndTime`. Contract (`AnalyticsData.summary/previous/unit/kind`) in [`docs/architecture/analytics-metricas.md`](../../../../../docs/architecture/analytics-metricas.md) |
 
 ## Common Workflows
 
