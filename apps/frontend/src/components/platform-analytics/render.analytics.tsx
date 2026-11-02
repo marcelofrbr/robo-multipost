@@ -5,25 +5,27 @@ import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { ChartSocial } from '@gitroom/frontend/components/analytics/chart-social';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import {
+  AnalyticsItem,
+  analyticsLabelKey,
+  formatMetric,
+} from '@gitroom/frontend/components/platform-analytics/analytics-format.helper';
 
-interface AnalyticsDataItem {
-  label: string;
-  data: Array<{ total: number; date: string }>;
-  average?: boolean;
-  percentageChange?: number;
-}
+type AnalyticsDataItem = AnalyticsItem;
 
 const TrendIndicator: FC<{ value: number; average?: boolean }> = ({
   value,
   average,
 }) => {
-  if (value === 0) return null;
+  const t = useT();
+  if (!value) return null;
 
   const isPositive = value > 0;
   const displayValue = Math.abs(value).toFixed(1);
 
   return (
     <div
+      title={t('analytics_vs_previous_period', 'vs. período anterior')}
       className={`flex items-center gap-[4px] text-[13px] font-medium ${
         isPositive ? 'text-[#32d583]' : 'text-[#f97066]'
       }`}
@@ -56,7 +58,7 @@ const AnalyticsCard: FC<{
   const t = useT();
   const colorVariants = ['purple', 'green', 'blue'] as const;
   const color = colorVariants[index % colorVariants.length];
-  const labelKey = `analytics_label_${item.label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+  const labelKey = analyticsLabelKey(item.label);
 
   const hasMultipleDataPoints = item.data.length > 1;
 
@@ -88,8 +90,17 @@ const AnalyticsCard: FC<{
               {t(labelKey, item.label)}
             </span>
           </div>
-          {item.percentageChange !== undefined && (
-            <TrendIndicator value={item.percentageChange} average={item.average} />
+          {item.kind === 'snapshot' ? (
+            <span className="text-[12px] text-newTableText opacity-60">
+              {t('analytics_current_value', 'Valor atual')}
+            </span>
+          ) : (
+            !!item.percentageChange && (
+              <TrendIndicator
+                value={item.percentageChange}
+                average={item.average}
+              />
+            )
           )}
         </div>
 
@@ -99,7 +110,14 @@ const AnalyticsCard: FC<{
             {/* Chart */}
             <div className="flex-1 px-[12px] py-[8px]">
               <div className="h-[120px] relative">
-                <ChartSocial data={item.data} color={color} key={`chart-${index}`} />
+                <ChartSocial
+                  data={item.data.map((p) => ({
+                    total: Number(p.total) || 0,
+                    date: p.date,
+                  }))}
+                  color={color}
+                  key={`chart-${index}`}
+                />
               </div>
             </div>
 
@@ -218,16 +236,11 @@ export const RenderAnalytics: FC<{
 
   const t = useT();
 
+  // Com `summary` usa o valor oficial do periodo; sem ele, o calculo antigo.
   const totals = useMemo(() => {
-    return data?.map((p: AnalyticsDataItem) => {
-      const value =
-        (p?.data.reduce((acc: number, curr: { total: number }) => acc + curr.total, 0) || 0) /
-        (p.average ? p.data.length : 1);
-      if (p.average) {
-        return value.toFixed(2) + '%';
-      }
-      return new Intl.NumberFormat().format(Math.round(value));
-    });
+    return Array.isArray(data)
+      ? data.map((p: AnalyticsDataItem) => formatMetric(p))
+      : [];
   }, [data]);
 
   if (loading) {
@@ -243,14 +256,23 @@ export const RenderAnalytics: FC<{
       {data?.length === 0 && (
         <EmptyState onRefresh={refreshChannel(integration as any)} />
       )}
-      {data?.map((item: AnalyticsDataItem, index: number) => (
-        <AnalyticsCard
-          key={`analytics-${index}`}
-          item={item}
-          total={totals[index]}
-          index={index}
-        />
-      ))}
+      {Array.isArray(data) &&
+        data.map((item: AnalyticsDataItem, index: number) => (
+          <AnalyticsCard
+            key={`analytics-${index}`}
+            item={item}
+            total={totals[index]}
+            index={index}
+          />
+        ))}
+      {Array.isArray(data) && data.length > 0 && (
+        <p className="col-span-full text-[12px] text-newTableText opacity-60">
+          {t(
+            'analytics_source_note',
+            'Dados vindos direto da API de cada rede, sem armazenamento. Podem ter atraso de até 48 horas. A variação compara com o período anterior de mesmo tamanho.'
+          )}
+        </p>
+      )}
     </div>
   );
 };

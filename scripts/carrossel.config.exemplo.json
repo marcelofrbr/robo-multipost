@@ -1,0 +1,29 @@
+{
+  "baseUrl": "https://SEU-DOMINIO/api",
+  "type": "draft",
+  "date": "2026-06-06T17:00:00.000Z",
+  "shortLink": false,
+  "images": [
+    "https://exemplo/slide-1.png",
+    "https://exemplo/slide-2.png"
+  ],
+  "_comentario_folder": "Alternativa a 'images': use \"folder\": \"./slides\" para subir de uma pasta local.",
+  "channels": [
+    {
+      "integrationId": "<id-do-linkedin-pessoal>",
+      "caption": "Legenda do LinkedIn.",
+      "post_as_images_carousel": true,
+      "carousel_name": "Nome (opcional)"
+    },
+    {
+      "integrationId": "<id-do-linkedin-pagina>",
+      "caption": "Legenda do LinkedIn.",
+      "post_as_images_carousel": true
+    },
+    {
+      "integrationId": "<id-do-instagram>",
+      "caption": "Legenda do Instagram #hashtags",
+      "post_type": "post"
+    }
+  ]
+}

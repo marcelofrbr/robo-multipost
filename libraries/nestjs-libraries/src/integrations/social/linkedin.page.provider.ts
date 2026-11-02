@@ -9,6 +9,10 @@ import {
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { LinkedinProvider } from '@gitroom/nestjs-libraries/integrations/social/linkedin.provider';
 import dayjs from 'dayjs';
+import {
+  buildMetric,
+  sumSeries,
+} from '@gitroom/nestjs-libraries/integrations/social/analytics.helper';
 import { Integration } from '@prisma/client';
 import { Plug } from '@gitroom/helpers/decorators/plug.decorator';
 import { timer } from '@gitroom/helpers/utils/timer';
@@ -382,6 +386,17 @@ export class LinkedinPageProvider
         }
 
         if (typeof current?.totalShareStatistics !== 'undefined') {
+          const stats = current.totalShareStatistics as any;
+          all['Impressions'].push({
+            total: stats.impressionCount || 0,
+            date: dayjs(current.timeRange.start).format('YYYY-MM-DD'),
+          });
+
+          all['Likes'].push({
+            total: stats.likeCount || 0,
+            date: dayjs(current.timeRange.start).format('YYYY-MM-DD'),
+          });
+
           all['Clicks'].push({
             total: current?.totalShareStatistics.clickCount,
             date: dayjs(current.timeRange.start).format('YYYY-MM-DD'),
@@ -407,7 +422,9 @@ export class LinkedinPageProvider
       },
       {
         'Page Views': [] as any[],
+        Impressions: [] as any[],
         Clicks: [] as any[],
+        Likes: [] as any[],
         Shares: [] as any[],
         Engagement: [] as any[],
         Comments: [] as any[],
@@ -416,13 +433,39 @@ export class LinkedinPageProvider
       }
     );
 
-    return Object.keys(analytics).map((key) => ({
-      label: key,
-      data: analytics[
-        key as 'Page Views' | 'Organic Followers' | 'Paid Followers'
-      ],
-      percentageChange: 5,
-    }));
+    // Sem comparacao de periodo (seta escondida). Engajamento e taxa: calculada
+    // a partir das contagens do periodo, nunca somada dia a dia.
+    return Object.keys(analytics).map((key): AnalyticsData => {
+      const data = analytics[key as keyof typeof analytics];
+      if (key !== 'Engagement') {
+        return { label: key, data, percentageChange: 0 };
+      }
+      const series = data.map((p: any) => ({
+        total: String(Math.round((Number(p.total) || 0) * 10000) / 100),
+        date: p.date,
+      }));
+      const impressions = sumSeries(analytics.Impressions);
+      const interactions =
+        sumSeries(analytics.Clicks) +
+        sumSeries(analytics.Likes) +
+        sumSeries(analytics.Comments) +
+        sumSeries(analytics.Shares);
+      if (!impressions) {
+        return {
+          label: key,
+          data: series,
+          percentageChange: 0,
+          average: true,
+          unit: 'percent',
+        };
+      }
+      return buildMetric({
+        label: key,
+        current: Math.round((interactions / impressions) * 10000) / 100,
+        unit: 'percent',
+        series,
+      });
+    });
   }
 
   async postAnalytics(

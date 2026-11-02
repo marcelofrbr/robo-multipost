@@ -1,5 +1,9 @@
 import { Global, Module } from '@nestjs/common';
-import { PrismaRepository, PrismaService, PrismaTransaction } from './prisma.service';
+import {
+  PrismaRepository,
+  PrismaService,
+  PrismaTransaction,
+} from './prisma.service';
 import { OrganizationRepository } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.repository';
 import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.service';
 import { UsersService } from '@gitroom/nestjs-libraries/database/prisma/users/users.service';
@@ -11,9 +15,11 @@ import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/in
 import { IntegrationRepository } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.repository';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
+import { CarouselSchedulerService } from '@gitroom/nestjs-libraries/database/prisma/posts/carousel.scheduler.service';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { MediaService } from '@gitroom/nestjs-libraries/database/prisma/media/media.service';
 import { MediaRepository } from '@gitroom/nestjs-libraries/database/prisma/media/media.repository';
+import { MediaCleanupService } from '@gitroom/nestjs-libraries/database/prisma/media/media.cleanup.service';
 import { NotificationsRepository } from '@gitroom/nestjs-libraries/database/prisma/notifications/notifications.repository';
 import { EmailService } from '@gitroom/nestjs-libraries/services/email.service';
 import { StripeService } from '@gitroom/nestjs-libraries/services/stripe.service';
@@ -58,6 +64,10 @@ import { ReviewLinksService } from '@gitroom/nestjs-libraries/database/prisma/re
 import { InstagramMessagingService } from '@gitroom/nestjs-libraries/integrations/social/instagram-messaging.service';
 import { RepostRepository } from '@gitroom/nestjs-libraries/database/prisma/repost/repost.repository';
 import { RepostService } from '@gitroom/nestjs-libraries/database/prisma/repost/repost.service';
+import { DmRepository } from '@gitroom/nestjs-libraries/database/prisma/dm/dm.repository';
+import { DmFlowService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-flow.service';
+import { DmBotService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-bot.service';
+import { DmRateLimitService } from '@gitroom/nestjs-libraries/database/prisma/dm/dm-rate-limit.service';
 import { AiModule } from '@gitroom/nestjs-libraries/ai/ai.module';
 
 @Global()
@@ -82,6 +92,7 @@ import { AiModule } from '@gitroom/nestjs-libraries/ai/ai.module';
     IntegrationRepository,
     PostsService,
     PostsRepository,
+    CarouselSchedulerService,
     StripeService,
     SignatureRepository,
     AutopostRepository,
@@ -89,6 +100,7 @@ import { AiModule } from '@gitroom/nestjs-libraries/ai/ai.module';
     SignatureService,
     MediaService,
     MediaRepository,
+    MediaCleanupService,
     AgenciesService,
     AgenciesRepository,
     IntegrationManager,
@@ -126,6 +138,10 @@ import { AiModule } from '@gitroom/nestjs-libraries/ai/ai.module';
     InstagramMessagingService,
     RepostRepository,
     RepostService,
+    DmRepository,
+    DmFlowService,
+    DmBotService,
+    DmRateLimitService,
   ],
   get exports() {
     return this.providers;

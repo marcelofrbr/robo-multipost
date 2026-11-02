@@ -57,6 +57,17 @@ export class PostsRepository {
     });
   }
 
+  getPendingPostsMedia(orgId?: string) {
+    return this._post.model.post.findMany({
+      where: {
+        deletedAt: null,
+        state: { in: ['QUEUE', 'DRAFT'] },
+        ...(orgId ? { organizationId: orgId } : {}),
+      },
+      select: { content: true, image: true },
+    });
+  }
+
   getOldPosts(orgId: string, date: string) {
     return this._post.model.post.findMany({
       where: {
@@ -613,6 +624,7 @@ export class PostsRepository {
       await this._post.model.post.updateMany({
         where: {
           group: body.group,
+          organizationId: orgId,
           deletedAt: null,
         },
         data: {
@@ -655,6 +667,17 @@ export class PostsRepository {
       data: {
         lastMessageId: messageId,
       },
+    });
+  }
+
+  /**
+   * Dono (org/perfil) de um grupo, SEM filtro de org: usado para recusar um
+   * upsert que aponte para o grupo de outra organizacao/perfil.
+   */
+  getGroupOwner(group: string) {
+    return this._post.model.post.findFirst({
+      where: { group, deletedAt: null },
+      select: { organizationId: true, profileId: true },
     });
   }
 

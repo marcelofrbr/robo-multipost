@@ -76,6 +76,17 @@ export const PlatformAnalytics = () => {
       return [];
     }
     const arr = [];
+    // 3 dias so onde o backend compara periodos com dados diarios confiaveis.
+    if (
+      ['facebook', 'instagram', 'instagram-standalone'].indexOf(
+        currentIntegration.identifier
+      ) !== -1
+    ) {
+      arr.push({
+        key: 3,
+        value: t('3_days', '3 dias'),
+      });
+    }
     if (
       [
         'facebook',
@@ -93,6 +104,16 @@ export const PlatformAnalytics = () => {
       arr.push({
         key: 7,
         value: t('7_days', '7 Days'),
+      });
+    }
+    if (
+      ['facebook', 'instagram', 'instagram-standalone', 'youtube'].indexOf(
+        currentIntegration.identifier
+      ) !== -1
+    ) {
+      arr.push({
+        key: 14,
+        value: t('14_days', '14 dias'),
       });
     }
     if (
@@ -282,6 +303,7 @@ export const PlatformAnalytics = () => {
                 name="date"
                 disableForm={true}
                 hideErrors={true}
+                value={keys}
                 onChange={(e) => setKey(+e.target.value)}
               >
                 {options.map((option) => (

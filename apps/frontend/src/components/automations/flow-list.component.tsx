@@ -137,6 +137,16 @@ export const FlowListComponent: FC = () => {
         </div>
         <div className="flex items-center gap-[8px]">
           <button
+            onClick={() => router.push('/automacoes/escalacoes')}
+            className="rounded-[4px] border border-fifth bg-sixth px-[16px] py-[8px] text-[14px] text-textColor hover:border-btnPrimary/50 transition-colors"
+            title={t(
+              'dm_escalations_button_tooltip',
+              'Conversas por DM encaminhadas para atendimento humano'
+            )}
+          >
+            {t('dm_escalations_button', 'Atendimento humano')}
+          </button>
+          <button
             onClick={() => router.push('/automacoes/logs')}
             className="rounded-[4px] border border-fifth bg-sixth px-[16px] py-[8px] text-[14px] text-textColor hover:border-btnPrimary/50 transition-colors"
             title={t(

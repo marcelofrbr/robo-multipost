@@ -534,8 +534,10 @@ export class IntegrationRepository {
     });
   }
 
-  async disableChannel(org: string, id: string) {
-    await this._integration.model.integration.update({
+  // Devolvem so { id, disabled }: a API publica e as tools MCP repassam a
+  // resposta ao cliente e a linha inteira teria token/refreshToken.
+  disableChannel(org: string, id: string) {
+    return this._integration.model.integration.update({
       where: {
         id,
         organizationId: org,
@@ -543,11 +545,12 @@ export class IntegrationRepository {
       data: {
         disabled: true,
       },
+      select: { id: true, disabled: true },
     });
   }
 
-  async enableChannel(org: string, id: string) {
-    await this._integration.model.integration.update({
+  enableChannel(org: string, id: string) {
+    return this._integration.model.integration.update({
       where: {
         id,
         organizationId: org,
@@ -555,6 +558,7 @@ export class IntegrationRepository {
       data: {
         disabled: false,
       },
+      select: { id: true, disabled: true },
     });
   }
 

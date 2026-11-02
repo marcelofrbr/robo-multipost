@@ -1,4 +1,10 @@
-import { HttpException, Injectable, Logger } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { MediaRepository } from '@gitroom/nestjs-libraries/database/prisma/media/media.repository';
 import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
@@ -37,6 +43,21 @@ export class MediaService {
     private _aiTextService: AiTextService,
     private _aiVideoService: AiVideoService
   ) {}
+
+  /**
+   * Escopo da API publica: 404 se nao existe na org; 403 se pertence a outro
+   * perfil (midia sem perfil e compartilhada, como em deleteMedia/getMedia).
+   */
+  async getMediaInScope(org: string, id: string, profileId?: string) {
+    const media = await this._mediaRepository.getMediaForOrg(org, id);
+    if (!media) {
+      throw new NotFoundException('Media not found');
+    }
+    if (profileId && media.profileId && media.profileId !== profileId) {
+      throw new ForbiddenException('Media belongs to another profile');
+    }
+    return media;
+  }
 
   async deleteMedia(org: string, id: string, profileId?: string) {
     return this._mediaRepository.deleteMedia(org, id, profileId);
@@ -97,10 +118,13 @@ export class MediaService {
           );
           return result.base64;
         } catch (err) {
-          const status =
-            err instanceof HttpException ? err.getStatus() : 'n/a';
+          const status = err instanceof HttpException ? err.getStatus() : 'n/a';
           this._logger.error(
-            `generateImage falhou: mode=${extra?.mode ?? 'T2I'} aspect=${aspectRatio ?? '(default)'} hasRef=${extra?.referenceImageUrl ? 'y' : 'n'} status=${status} msg=${(err as Error).message}`
+            `generateImage falhou: mode=${extra?.mode ?? 'T2I'} aspect=${
+              aspectRatio ?? '(default)'
+            } hasRef=${
+              extra?.referenceImageUrl ? 'y' : 'n'
+            } status=${status} msg=${(err as Error).message}`
           );
           throw err;
         }
@@ -110,16 +134,72 @@ export class MediaService {
     return generating;
   }
 
-  saveFile(org: string, fileName: string, filePath: string, originalName?: string, profileId?: string) {
-    return this._mediaRepository.saveFile(org, fileName, filePath, originalName, profileId);
+  saveFile(
+    org: string,
+    fileName: string,
+    filePath: string,
+    originalName?: string,
+    profileId?: string
+  ) {
+    return this._mediaRepository.saveFile(
+      org,
+      fileName,
+      filePath,
+      originalName,
+      profileId
+    );
   }
 
-  getMedia(org: string, page: number, profileId?: string) {
-    return this._mediaRepository.getMedia(org, page, profileId);
+  /**
+   * Hospeda uma midia a partir de uma URL publica externa no storage proprio
+   * (R2/local) e registra o `Media`. Reusa o mesmo padrao de `generateAiVideo`
+   * / `generateImage` (`storage.uploadSimple` + `saveFile`). Usado pelo MCP
+   * tool `uploadMediaFromUrl` para que o agente consiga anexar imagens/videos
+   * de uma URL ao agendar posts (ex.: carrossel).
+   */
+  async uploadFromUrl(
+    org: string,
+    url: string,
+    fileName?: string,
+    profileId?: string
+  ) {
+    const file = await this.storage.uploadSimple(url);
+    if (!file) {
+      throw new HttpException(
+        'Falha ao hospedar a midia da URL no storage proprio.',
+        502
+      );
+    }
+    const name = fileName || file.split('/').pop() || 'media';
+    return this.saveFile(org, name, file, fileName, profileId);
   }
 
-  saveMediaInformation(org: string, data: SaveMediaInformationDto) {
-    return this._mediaRepository.saveMediaInformation(org, data);
+  async getMedia(
+    org: string,
+    page: number,
+    profileId?: string,
+    range?: { from?: string; to?: string }
+  ) {
+    if (
+      range?.from &&
+      range?.to &&
+      new Date(range.from).getTime() > new Date(range.to).getTime()
+    ) {
+      throw new HttpException('from must be before or equal to to', 400);
+    }
+    return this._mediaRepository.getMedia(org, page, profileId, range);
+  }
+
+  getMediaStats(org: string, profileId?: string) {
+    return this._mediaRepository.getMediaStats(org, profileId);
+  }
+
+  saveMediaInformation(
+    org: string,
+    data: SaveMediaInformationDto,
+    profileId?: string
+  ) {
+    return this._mediaRepository.saveMediaInformation(org, data, profileId);
   }
 
   getVideoOptions() {

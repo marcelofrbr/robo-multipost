@@ -6,6 +6,11 @@ import { ChartSocial } from '@gitroom/frontend/components/analytics/chart-social
 import { Select } from '@gitroom/react/form/select';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 import { MissingReleaseModal } from '@gitroom/frontend/components/launches/missing-release.modal';
+import {
+  AnalyticsItem,
+  analyticsLabelKey,
+  formatMetric,
+} from '@gitroom/frontend/components/platform-analytics/analytics-format.helper';
 
 interface AnalyticsData {
   label: string;
@@ -58,17 +63,10 @@ export const StatisticsModal: FC<{
     ];
   }, [t]);
 
+  // Com `summary` usa o valor oficial; sem ele, o calculo antigo (soma/media).
   const totals = useMemo(() => {
     if (!analyticsData || !Array.isArray(analyticsData)) return [];
-    return analyticsData.map((p: AnalyticsData) => {
-      const value =
-        (p?.data?.reduce((acc: number, curr: any) => acc + Number(curr.total), 0) || 0) /
-        (p.average ? p.data.length : 1);
-      if (p.average) {
-        return value.toFixed(2) + '%';
-      }
-      return Math.round(value);
-    });
+    return analyticsData.map((p: AnalyticsData) => formatMetric(p as AnalyticsItem));
   }, [analyticsData]);
 
   const isLoading = isLoadingStatistics || isLoadingAnalytics;
@@ -124,7 +122,7 @@ export const StatisticsModal: FC<{
                               }`}
                             />
                             <span className="text-[15px] font-medium text-newTableText">
-                              {p.label}
+                              {t(analyticsLabelKey(p.label), p.label)}
                             </span>
                           </div>
                         </div>

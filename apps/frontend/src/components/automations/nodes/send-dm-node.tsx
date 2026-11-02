@@ -13,6 +13,7 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
   const buttonText: string = config.buttonText || '';
   const buttonUrl: string = config.buttonUrl || '';
   const hasButton = !!buttonText && !!buttonUrl;
+  const handoffToBot = !!config.handoffToBot;
 
   return (
     <div
@@ -35,7 +36,7 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
           <polygon points="22 2 15 22 11 13 2 9 22 2" />
         </svg>
         <span className="text-[13px] font-semibold" style={{ color: '#c084fc' }}>
-          {t('send_dm_node_label', 'Send DM')}
+          {t('send_dm_node_label', 'Enviar DM')}
         </span>
       </div>
       {message && (
@@ -47,6 +48,11 @@ export const SendDmNode: FC<NodeProps> = memo(({ data, selected }) => {
           title={buttonUrl}
         >
           🔗 {buttonText}
+        </span>
+      )}
+      {handoffToBot && (
+        <span className="block mt-[6px] text-[10px] px-[6px] py-[2px] rounded-[10px] border border-purple-400/40 bg-purple-500/10 text-purple-200 max-w-[180px] truncate w-fit">
+          🤖 {t('send_dm_node_handoff_badge', 'Handoff pro bot de DM')}
         </span>
       )}
       <Handle type="source" position={Position.Bottom} className="!bg-purple-400" />

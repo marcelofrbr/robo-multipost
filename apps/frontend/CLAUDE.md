@@ -87,6 +87,10 @@ The `--color-custom*` variables are **deprecated**. Use `--new-*` tokens and Tai
 
 **Never install UI component libraries from npm** (Material UI, Chakra, isolated Radix, etc.) — write native components in React + Tailwind. Reusable primitives live in `libraries/react-shared-libraries/src/form/` (button, input, select, checkbox, slider, color-picker, custom-select, textarea, canonical).
 
+### Unit tests for pure helpers — vitest, `*.test.ts`
+
+Pure, framework-free helper functions (parsers, formatters — no React/SWR) get a co-located `*.test.ts` spec run by vitest (zero-config, root devDependency). This is a **different suffix and runner** than the backend/libraries `.spec.ts` (Jest) convention — do not mix them up, and note that no `pnpm test*` script runs vitest: execute it explicitly from the repo root with `pnpm exec vitest run apps/frontend/src/<path>`. Examples: `src/components/launches/generator/generator.stream.test.ts`, `src/components/launches/zernio/zernio-callback.helper.test.ts`, `src/components/media/media-date-range.helper.test.ts`.
+
 ## Key File Map
 
 | File | Purpose |
@@ -99,7 +103,11 @@ The `--color-custom*` variables are **deprecated**. Use `--new-*` tokens and Tai
 | `src/components/launches/` | Largest surface — composer, calendar, AI modals (~60 components) |
 | `src/components/launches/helpers/mode.tab.component.tsx` | Shared `ModeTab` for T2X/I2X tabs in AI modals (image, video) |
 | `src/components/launches/helpers/reference.image.dropzone.component.tsx` | Shared dropzone for I2I/I2V reference image (drag-drop + URL fallback, POSTs to `/media/upload-server`). Reuse instead of inlining file-upload logic in new modals |
-| `src/components/automations/logs/logs.component.tsx` | Unbound IG comment inbox (Dark Posts / Logs page at `/automacoes/logs`) — destino dos comentários em mídias não monitoradas por nenhuma automação |
+| `src/components/media/media.component.tsx` | `MediaBox`: media library page + composer media picker modal; integrates `MediaDateFilter`, server-side date range sent to `GET /media` (SWR key includes the range) |
+| `src/components/media/media-date-filter.component.tsx` | Presets (Today/7d/30d/This month) + From/To + Clear controls for `MediaBox`'s date filter, fully `useT()` |
+| `src/components/media/media-date-range.helper.ts` | Pure helpers (`presetDateRange`, `toIsoRange`, `isValidDateRange`) converting local day boundaries to UTC ISO via `getTimezone()` (`components/layout/set.timezone.tsx`); tested by `media-date-range.helper.test.ts` |
+| `src/components/automations/logs/logs.component.tsx` | Unbound IG comment inbox (Dark Posts / Logs page at `/automacoes/logs`) — destino dos comentarios em midias nao monitoradas por nenhuma automacao |
+| `src/components/automations/dm-escalations.component.tsx` | Inbox de escalacoes de DM (rota `/automacoes/escalacoes`) -- lista conversas escaladas para atendimento humano e permite resolve-las via `POST /flows/dm/escalations/:id/resolve` |
 | `src/components/automations/ad-aliases-field.component.tsx` | Shared `<AdAliasesField />` used in both the Wizard and Flow Builder — parity component for "Dark Post IDs" trigger config |
 | `src/components/automations/hooks/use-unmatched-comments.ts` | SWR hooks (`useInbox`, `useAliases`, `useAliasLookup`) + `createInboxActions(fetch, mutators)` mutation factory (mutate-as-parameter pattern — see SWR section above) |
 | `src/components/launches/ai.image.tsx` / `ai.video.tsx` / `ai.search.tsx` | AI generation modals — all 700px width, sticky header without `-mt`/`pt` quirks, X inside same flex row as `TopTitle` |

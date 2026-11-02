@@ -12,6 +12,10 @@ import FormData from 'form-data';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import dayjs from 'dayjs';
+import {
+  buildMetric,
+  sumSeries,
+} from '@gitroom/nestjs-libraries/integrations/social/analytics.helper';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 
@@ -318,12 +322,21 @@ export class PinterestProvider
       )
     ).json();
 
-    return daily_metrics.reduce(
+    const metrics: AnalyticsData[] = daily_metrics.reduce(
       (acc: any, item: any) => {
         if (typeof item.metrics.PIN_CLICK_RATE !== 'undefined') {
+          // Taxa do dia calculada pelas contagens (cliques / impressoes), em %.
+          const impressions = Number(item.metrics.IMPRESSION) || 0;
           acc[0].data.push({
             date: item.date,
-            total: item.metrics.PIN_CLICK_RATE,
+            total: String(
+              impressions
+                ? Math.round(
+                    ((Number(item.metrics.PIN_CLICK) || 0) / impressions) *
+                      10000
+                  ) / 100
+                : 0
+            ),
           });
 
           acc[1].data.push({
@@ -350,13 +363,29 @@ export class PinterestProvider
         return acc;
       },
       [
-        { label: 'Pin click rate', data: [] as any[] },
-        { label: 'Impressions', data: [] as any[] },
-        { label: 'Pin Clicks', data: [] as any[] },
-        { label: 'Engagement', data: [] as any[] },
-        { label: 'Saves', data: [] as any[] },
+        { label: 'Pin click rate', data: [] as any[], percentageChange: 0 },
+        { label: 'Impressions', data: [] as any[], percentageChange: 0 },
+        { label: 'Pin Clicks', data: [] as any[], percentageChange: 0 },
+        { label: 'Engagement', data: [] as any[], percentageChange: 0 },
+        { label: 'Saves', data: [] as any[], percentageChange: 0 },
       ]
     );
+
+    // Taxa de clique do periodo = cliques / impressoes (nunca soma de taxas).
+    const [rate, impressions, clicks] = metrics;
+    const totalImpressions = sumSeries(impressions.data);
+    metrics[0] = totalImpressions
+      ? buildMetric({
+          label: rate.label,
+          current:
+            Math.round((sumSeries(clicks.data) / totalImpressions) * 10000) /
+            100,
+          unit: 'percent',
+          series: rate.data,
+        })
+      : { ...rate, average: true, unit: 'percent' };
+
+    return metrics;
   }
 
   async postAnalytics(

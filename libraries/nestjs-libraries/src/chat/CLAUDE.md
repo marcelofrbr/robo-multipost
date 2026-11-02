@@ -8,6 +8,7 @@
   - [`src/ai/CLAUDE.md`](../ai/CLAUDE.md) — AI Provider System this chat consumes via `factory.textForMastra(...)`
   - [`src/integrations/social/CLAUDE.md`](../integrations/social/CLAUDE.md) — providers triggered by the MCP tools
   - [`apps/orchestrator/CLAUDE.md`](../../../../apps/orchestrator/CLAUDE.md) — workflows triggered by the IG webhook (follow-gate)
+  - [`apps/backend/CLAUDE.md`](../../../../apps/backend/CLAUDE.md) — `src/public-api/` routes the 43 MCP tools mirror (same scope-guard services, e.g. `IntegrationService.createAuthUrl`)
 
 ## What lives here
 
@@ -17,10 +18,11 @@ The conversational agent layer (Mastra) + MCP tools the agent can invoke + infra
 |---|---|
 | `mastra.service.ts` / `mastra.store.ts` | Mastra agent bootstrap and store |
 | `agent.model.resolver.ts` | Resolves the lazy `LanguageModel` via the AI factory |
-| `tools/` | 12+ MCP tools the agent can invoke |
+| `tools/` | 43 MCP tools the agent can invoke — full parity with `/public/v1` (see [`docs/api/mcp.md`](../../../../docs/api/mcp.md)) |
 | `vector/` | Vectorization helpers for RAG (Knowledge Base) |
 | `helpers/` | Shared helpers |
-| `start.mcp.ts` | Entry point to initialize the MCP server |
+| `start.mcp.ts` | Entry point to initialize the MCP server. Routes are mounted with `app.use` (outside Nest's guard pipeline) — rate limiting comes from `mcp-rate-limit.ts`, not `ThrottlerBehindProxyGuard` |
+| `mcp-rate-limit.ts` | `createMcpRateLimit`: Redis counter per token (sha256 hash, never the raw key) and per IP for `/mcp*`, `/sse*`, `/message*`; 429 above the window; fail-open when Redis is down |
 | `auth.context.ts` / `async.storage.ts` | Context propagation (org/profile) between agent and tools |
 | `oauth-middleware.ts` / `oauth-types.ts` | OAuth helper for authenticated MCP endpoints |
 
@@ -88,6 +90,17 @@ Meta limits **one `sendPrivateReply` per comment**. After the postback, the 24h 
 | `integration.validation.tool.ts` | Validate an integration config |
 | `knowledge.query.tool.ts` | Query the profile's Knowledge Base (RAG) |
 | `web-search.tool.ts` | Web search via `AiWebSearchService` |
+| `upload.media.from.url.tool.ts` | Host external media from a public URL via `MediaService.uploadFromUrl` → `{ id, path }` for use as a post attachment |
+| `automations.tool.ts` | Flows over MCP: `listAutomations`, `listInstagramPostsForAutomation` (passes `getProfileId()` → channel scope), `createCommentAutomation`, `updateAutomation`, `getAutomation`, `deleteAutomation`, `automationExecutions` (page/limit clamped like the public controller), `webhookStatus`, `setAutomationStatus`, via `FlowsService`. `automationInputSchema` mirrors `QuickCreateFlowDto` in full (story_reply, `storyIds`, `matchMode: exact`, two-step follow-gate, `handoffToBot`) — `quickUpdateFlow` REWRITES the flow, so a narrower schema would silently drop fields |
+| `posts.tool.ts` | `listPosts`, `getPost` (via `toPublicPostPayload` — no channel tokens), `deletePost`, `changePostDate`, `findFreeSlot` (channel scope), `postStatistics`, `createPostComment` (author = `OrganizationService.getOwnerUserId`) — all through `PostsService.getPostInScope` |
+| `analytics.tool.ts` | `integrationAnalytics`, `postAnalytics` |
+| `profiles.notifications.tool.ts` | `listProfiles` (profile key sees only itself), `listNotifications` |
+| `media.manage.tool.ts` | `deleteMedia`, `saveMediaInformation` — through `MediaService.getMediaInScope` |
+| `integration.manage.tool.ts` | `integrationEnable`, `integrationDisable`, `integrationSettings` (read/write), `integrationAuthUrl` (→ `IntegrationService.createAuthUrl`, the single OAuth-URL implementation shared with `GET /public/v1/social/:provider`) — through `IntegrationService.getIntegrationInScope` |
+| `media.list.tool.ts` | `listMedia`: lists media in the org/profile gallery via `AsyncLocalStorage` (no `orgId` in schema); optional `from`/`to` (upload date) |
+| `media.cleanup.tool.ts` | `cleanupMedia`: triggers `MediaCleanupService.cleanup()` and returns `{ deleted, skipped, failed }` |
+| `dm-bot.config.tool.ts` | `configureDmBot`: liga/desliga o bot de DM de um perfil (seta o status do Flow `direct_message`) |
+| `dm-escalations.list.tool.ts` | `listDmEscalations`: lista conversas de DM escaladas para atendimento humano; `resolveDmEscalation`: fecha a conversa via `DmFlowService.resolveConversation` (404 fora do escopo) |
 | `tool.list.ts` | Central registry of available tools |
 | `tool.context.helper.ts` | Helper to extract org/profile from `AsyncLocalStorage` |
 
@@ -97,7 +110,7 @@ Meta limits **one `sendPrivateReply` per comment**. After the postback, the 24h 
 
 1. **Spec first** if the tool has non-trivial logic.
 2. Create `tools/<name>.tool.ts` exporting an object that satisfies `AgentToolInterface`: `id`, `description`, `inputSchema` (Zod), `execute(input, context)`.
-3. **Do not accept `orgId`/`profileId` in the schema** — read them from `AsyncLocalStorage` via `tool.context.helper.ts`.
+3. **Do not accept `orgId`/`profileId` in the schema** — read them from `AsyncLocalStorage` via `getAuth()` / `getProfileId()` (`async.storage.ts`). This works on **both** the agent path and direct MCP calls. Do **not** rely on `checkAuth` + `readRequestContext(options)` (`tool.context.helper.ts`) to resolve org/profile: that `requestContext` is only populated on the agent path and is `undefined` on direct MCP calls (the bug that broke all tools). `readRequestContext` is now legacy — used only for `persona` in `generate.image.tool.ts` (agent-path best-effort).
 4. Register in `tool.list.ts`.
 5. If the tool consumes AI: use the factory from [`src/ai/`](../ai/CLAUDE.md) — do not call OpenAI/OpenRouter directly.
 6. If the tool triggers an integration: use `IntegrationManager` (in `database/prisma/integrations/`).
@@ -126,6 +139,8 @@ Meta limits **one `sendPrivateReply` per comment**. After the postback, the 24h 
 5. **Symptom:** RAG returns no results → **Cause:** pgvector not enabled, or embeddings not generated. **Fix:** verify the `pgvector/pgvector:pg17` image and re-run the chunking pipeline; see [`docs/architecture/knowledge-base-rag.md`](../../../../docs/architecture/knowledge-base-rag.md).
 6. **Symptom:** new Flow in the wizard does not appear in the visual Flow Builder → **Cause:** only one UI was updated. **Fix:** update **both wizard + node-config-panel** (parity — they share the same `triggerConfig`).
 7. **Symptom:** Gemini (Google AI Studio) via OpenRouter returns `400 INVALID_ARGUMENT: function_declarations[N].parameters.properties[X].items.properties[Y].items.required[0]: property is not defined` → **Cause:** `z.any()` in a tool's `inputSchema` translates to an empty JSON Schema `{}`, which Gemini rejects when the field is `required`. OpenAI/Anthropic tolerate this; Gemini does not. **Fix:** use `z.string()` for the field and let the backend `JSON.parse` to reidratar arrays/objects/numbers/booleans (see `tryParseJson` helper in `integration.schedule.post.ts`). This rule applies ONLY to `inputSchema` (what the LLM generates); `outputSchema` is not validated by Gemini's tool-schema check, so `z.any()` there is fine. Whenever adding a Zod tool schema, never use `z.any()` for required input fields — declare a concrete type or `z.string()` + parse downstream.
+8. **Symptom:** `updateAutomation` (MCP) silently clears a field on an existing automation (e.g. a field that was just added to `QuickCreateFlowDto`) → **Cause:** `automationInputSchema` in `automations.tool.ts` is a hand-maintained mirror of `QuickCreateFlowDto`; `quickUpdateFlow` REWRITES the whole flow from the parsed input, so any field missing from the Zod schema is indistinguishable from "field cleared". **Fix:** whenever a field is added to/renamed in `QuickCreateFlowDto` (`libraries/nestjs-libraries/src/dtos/flows/flow.dto.ts`), mirror the same change in `automationInputSchema` in the same commit.
+9. **Symptom:** a new route mounted with `app.use(...)` in `start.mcp.ts` (or any future middleware-only route) has no rate limiting even though `ThrottlerBehindProxyGuard` is registered globally as `APP_GUARD` → **Cause:** `APP_GUARD` only runs for Nest's controller/decorator pipeline; routes wired directly on the Express app via `app.use` (like `/mcp`, `/mcp-oauth`, `/sse`, `/message`) never enter it. **Fix:** wire `createMcpRateLimit()` (`mcp-rate-limit.ts`) — or an equivalent per-route middleware — explicitly for any new `app.use`-mounted route; never assume the global guard covers it.
 
 ## Commands
 

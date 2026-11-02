@@ -25,6 +25,7 @@ import { CustomFileValidationPipe } from '@gitroom/nestjs-libraries/upload/custo
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
 import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
 import { SaveMediaInformationDto } from '@gitroom/nestjs-libraries/dtos/media/save.media.information.dto';
+import { GetMediaQueryDto } from '@gitroom/nestjs-libraries/dtos/media/get-media.query.dto';
 import { VideoDto } from '@gitroom/nestjs-libraries/dtos/videos/video.dto';
 import { VideoFunctionDto } from '@gitroom/nestjs-libraries/dtos/videos/video.function.dto';
 import { GenerateImageBodyDto } from '@gitroom/nestjs-libraries/dtos/ai/image.dto';
@@ -237,9 +238,12 @@ export class MediaController {
   getMedia(
     @GetOrgFromRequest() org: Organization,
     @GetProfileFromRequest() profile: Profile | null,
-    @Query('page') page: number
+    @Query() query: GetMediaQueryDto
   ) {
-    return this._mediaService.getMedia(org.id, page, profile?.id);
+    return this._mediaService.getMedia(org.id, query.page ?? 1, profile?.id, {
+      from: query.from,
+      to: query.to,
+    });
   }
 
   @Get('/video-options')
